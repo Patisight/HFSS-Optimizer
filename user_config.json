@@ -1,0 +1,158 @@
+{
+  "hfss": {
+    "project_path": "C:/Users/16438/Desktop/pyHFSSProject/n2.aedt",
+    "design_name": "S3",
+    "setup_name": "Setup1",
+    "sweep_name": "Sweep"
+  },
+  "variables": [
+    {
+      "name": "Wm",
+      "bounds": [
+        0.2,
+        1.5
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Wm2",
+      "bounds": [
+        0.2,
+        1.4
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Wm3",
+      "bounds": [
+        0.2,
+        1.0
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Md",
+      "bounds": [
+        1.0,
+        3.5
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Wp",
+      "bounds": [
+        8.0,
+        14.0
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Lp",
+      "bounds": [
+        8.0,
+        14.0
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Lp2",
+      "bounds": [
+        0.5,
+        3.0
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Sangle",
+      "bounds": [
+        0.5,
+        1.5
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Wm4",
+      "bounds": [
+        0.2,
+        2.0
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Wd",
+      "bounds": [
+        0.5,
+        2.0
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Lm",
+      "bounds": [
+        3.0,
+        6.0
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Lm4",
+      "bounds": [
+        1.0,
+        4.0
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Wc",
+      "bounds": [
+        4.0,
+        5.5
+      ],
+      "unit": "mm"
+    }
+  ],
+  "objectives": [
+    {
+      "type": "s_db",
+      "name": "S11_max",
+      "goal": -10.0,
+      "target": "minimize",
+      "weight": 2.0,
+      "freq_range": [
+        5.6,
+        6.2
+      ],
+      "port": [
+        1,
+        1
+      ],
+      "constraint": "max"
+    },
+    {
+      "type": "peak_gain",
+      "name": "PeakGain",
+      "goal": 6.0,
+      "target": "maximize",
+      "weight": 1.0,
+      "freq": 5.9
+    }
+  ],
+  "algorithm": {
+    "algorithm": "mopso",
+    "population_size": 3,
+    "n_generations": 3,
+    "use_surrogate": true,
+    "surrogate_type": "gp",
+    "inertia_weight": 0.4,
+    "c1": 1.5,
+    "c2": 1.5,
+    "surrogate_min_samples": 2,
+    "surrogate_threshold": 0.4
+  },
+  "visualization": {
+    "plot_interval": 7
+  },
+  "run": {
+    "output_dir": "C:\\Users\\16438\\Desktop\\HFSS-Python-Optimizer\\optim_results"
+  }
+}
