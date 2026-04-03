@@ -13,8 +13,8 @@ except Exception as e:
     print(f"[ERROR] MOPSO: {e}")
 
 try:
-    from algorithms.mobo import MOBO
-    print("[OK] MOBO")
+    from algorithms.mobo import MultiObjectiveBayesianOptimizer
+    print("[OK] MOBO (MultiObjectiveBayesianOptimizer)")
 except Exception as e:
     print(f"[ERROR] MOBO: {e}")
 

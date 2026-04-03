@@ -40,20 +40,22 @@ class HFSSController:
             print(f"  Project: {self.project_path}")
             print(f"  Design: {self.design_name}")
             
-            # 删除所有可能的锁文件
-            lock_patterns = [
-                self.project_path.replace('.aedt', '.aedt.lock'),
-                self.project_path.replace('.aedt', '.aedtresults') + '\\.lock',
-                os.path.join(os.path.dirname(self.project_path), '.lock'),
-            ]
-            
-            for lock_file in lock_patterns:
-                if os.path.exists(lock_file):
-                    try:
-                        os.remove(lock_file)
-                        print(f"  [OK] Removed lock: {lock_file}")
-                    except Exception as e:
-                        print(f"  [WARN] Cannot remove lock: {e}")
+            # 安全删除锁文件（仅在无 HFSS 进程运行时）
+            if not self._is_hfss_running():
+                lock_patterns = [
+                    self.project_path.replace('.aedt', '.aedt.lock'),
+                    self.project_path.replace('.aedt', '.aedtresults') + '\\.lock',
+                    os.path.join(os.path.dirname(self.project_path), '.lock'),
+                ]
+                for lock_file in lock_patterns:
+                    if os.path.exists(lock_file):
+                        try:
+                            os.remove(lock_file)
+                            print(f"  [OK] Removed stale lock: {lock_file}")
+                        except Exception as e:
+                            print(f"  [WARN] Cannot remove lock: {e}")
+            else:
+                print("[INFO] HFSS process detected, skipping lock cleanup")
             
             # 尝试连接到已有的 HFSS 实例
             try:
@@ -67,7 +69,7 @@ class HFSSController:
                     close_on_exit=False,
                 )
                 print("[OK] Connected to existing HFSS instance")
-            except:
+            except Exception:
                 # 如果失败，启动新的 HFSS
                 print("[INFO] Starting new HFSS instance...")
                 self.hfss = pyaedt.Hfss(
@@ -88,6 +90,20 @@ class HFSSController:
             print(f"[ERROR] Connection failed: {e}")
             return False
     
+    @staticmethod
+    def _is_hfss_running() -> bool:
+        """检查是否有 HFSS 进程正在运行"""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['tasklist', '/FI', 'IMAGENAME eq AnsysCOMEngine.exe'],
+                capture_output=True, text=True, timeout=5
+            )
+            return 'AnsysCOMEngine.exe' in result.stdout
+        except Exception:
+            # 无法判断时保守返回 True，不删锁文件
+            return True
+
     def close(self):
         """关闭 HFSS 连接"""
         if self.hfss:
@@ -96,10 +112,10 @@ class HFSSController:
                 self.hfss.close_desktop()
                 self.hfss = None
                 print("[OK] Closed")
-            except:
+            except Exception:
                 pass
         self._connected = False
-    
+
     def set_variable(self, name: str, value: float, unit: str = "mm"):
         """
         设置设计变量
@@ -146,7 +162,7 @@ class HFSSController:
                 print(f"[INFO] Force re-analyzing {self.setup_name}...")
                 try:
                     self.hfss.odesign.DeleteSetupData(self.setup_name)
-                except:
+                except Exception:
                     pass
             else:
                 print(f"[INFO] Analyzing {self.setup_name}...")
@@ -198,7 +214,7 @@ class HFSSController:
                                 result['has_radiation_boundary'] = True
                                 print(f"[INFO] Found radiation boundary: {name}")
                                 break
-                        except:
+                        except Exception:
                             pass
             except Exception as e:
                 print(f"[DEBUG] Check radiation boundary: {e}")
@@ -261,9 +277,9 @@ class HFSSController:
                     if sphere_name in existing:
                         print(f"[INFO] Far field sphere '{sphere_name}' already exists")
                         return True
-            except:
+            except Exception:
                 pass
-            
+
             # 使用 pyaedt 创建远场球体
             try:
                 # 方法1: 使用 pyaedt API
@@ -464,7 +480,7 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 return float(freq_str.replace('HZ', '').strip()) / 1000000000
             else:
                 return float(freq_str)
-        except:
+        except Exception:
             return 4.0  # 默认 4 GHz
     
     def get_setup_frequency(self) -> float:
@@ -485,7 +501,7 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 return self._parse_freq_to_ghz(current_freq)
             else:
                 return float(current_freq)
-        except:
+        except Exception:
             return 4.0
     
     def get_s_parameters(self, ports: List[Tuple[int, int]] = None) -> Optional[Dict]:
@@ -524,9 +540,9 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
             # 获取数据后立即删除报告，避免累积
             try:
                 report.delete()
-            except:
+            except Exception:
                 pass
-            
+
             if sol_data is None or not hasattr(sol_data, 'data_real'):
                 print("[WARN] No solution data")
                 return None
@@ -540,9 +556,9 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                         freq = freq / 1e9
                 else:
                     freq = np.linspace(4, 8, 100)
-            except:
+            except Exception:
                 freq = np.linspace(4, 8, 100)
-            
+
             result = {
                 'freq': freq,
                 'ports': {}
@@ -559,15 +575,19 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 
                 s_db = np.array(s_db).flatten()
                 
-                if s_real is not None:
+                if s_real is not None and s_imag is not None:
                     s_real = np.array(s_real).flatten()
-                    s_imag = np.array(s_imag).flatten() if s_imag is not None else np.zeros_like(s_real)
+                    s_imag = np.array(s_imag).flatten()
                     s_complex = s_real + 1j * s_imag
                     mag = np.abs(s_complex)
                     phase = np.angle(s_complex, deg=True)
                 else:
+                    # 无法获取实部和虚部，从 dB 值估算幅值，相位设为 0
                     mag = 10 ** (s_db / 20)
                     phase = np.zeros_like(s_db)
+                    # 估算的实部和虚部（相位为 0）
+                    s_real = mag
+                    s_imag = np.zeros_like(mag)
                 
                 result['ports'][(i, j)] = {
                     'mag': mag,
@@ -604,7 +624,7 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
             ff_setups = []
             try:
                 ff_setups = list(self.hfss._odesign.GetChildObject('Radiation').GetChildNames())
-            except:
+            except Exception:
                 pass
             
             if not ff_setups:
@@ -640,7 +660,7 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 # 获取数据后立即删除报告
                 try:
                     ap_report.delete()
-                except:
+                except Exception:
                     pass
                 
                 if sol_data:
@@ -670,7 +690,7 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 if sphere_name:
                     try:
                         ap_report.far_field_sphere = sphere_name
-                    except:
+                    except Exception:
                         pass
                 
                 ap_report.expressions = ["PeakGain"]
@@ -681,9 +701,9 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 # 获取数据后立即删除报告
                 try:
                     ap_report.delete()
-                except:
+                except Exception:
                     pass
-                
+
                 if sol_data:
                     gain_data = sol_data.data_real("PeakGain")
                     if gain_data is not None and len(gain_data) > 0:
@@ -751,7 +771,7 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
             # 获取数据后立即删除报告
             try:
                 report.delete()
-            except:
+            except Exception:
                 pass
             
             if sol_data is None:
@@ -766,7 +786,13 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
             z_real = np.array(z_real).flatten()
             z_imag = np.array(z_imag).flatten()
             
-            freq = np.linspace(4, 8, len(z_real))
+            # 使用 Sweep 的实际频率，而非硬编码
+            try:
+                freq = np.array(sol_data.primary_sweep_values).flatten()
+                if np.max(freq) > 100:  # Hz -> GHz
+                    freq = freq / 1e9
+            except Exception:
+                freq = np.linspace(4, 8, len(z_real))
             
             return {
                 'freq': freq,
@@ -778,13 +804,44 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
             print(f"[WARN] Get Z-params: {e}")
             return None
     
+    def clear_solution_cache(self):
+        """清除HFSS解决方案缓存（报告数据、场数据等）
+
+        调用此方法可以释放HFSS内存中缓存的仿真数据，
+        避免长时间运行后HFSS变得卡顿。
+        在每次仿真迭代结束后调用。
+        """
+        if not self._connected or not self.hfss:
+            return
+
+        try:
+            self.hfss.odesign.DeleteSetupData(self.setup_name)
+            print("[OK] Solution cache cleared")
+        except Exception as e:
+            print(f"[WARN] Clear solution cache: {e}")
+
+        try:
+            script = f'''
+Dim oDesign
+Set oDesign = GetActiveDesign()
+Dim oModule
+Set oModule = oDesign.GetModule("ReportSetup")
+On Error Resume Next
+Dim reportNames
+reportNames = oModule.GetAllReportNames()
+If IsArray(reportNames) Then
+    For i = 0 To UBound(reportNames)
+        oModule.DeleteReport reportNames(i)
+    Next
+End If
+'''
+            self.hfss._odesign.ExecuteScript(script)
+        except Exception:
+            pass
+
     def cleanup(self):
         """清理仿真数据"""
-        if self.hfss:
-            try:
-                self.hfss.odesign.DeleteSetupData(self.setup_name)
-            except:
-                pass
+        self.clear_solution_cache()
 
 
 class HFSSContext:

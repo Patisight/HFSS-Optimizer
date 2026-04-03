@@ -91,17 +91,19 @@ class AcquisitionFunction:
     def expected_improvement(X, model, y_best, xi=0.01):
         """
         期望改进 (EI)
-        
+
         EI = E[max(f(x) - f*, 0)]
         """
+        from scipy.stats import norm
+
         mu, sigma = model.predict(X, return_std=True)
-        
+
         with np.errstate(divide='warn'):
             imp = mu - y_best - xi
             Z = imp / sigma
             ei = imp * norm.cdf(Z) + sigma * norm.pdf(Z)
             ei[sigma < 1e-10] = 0.0
-        
+
         return ei
     
     @staticmethod
@@ -269,6 +271,12 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
             
             # 更新帕累托前沿
             self._update_pareto_front()
+
+            # 早停检查
+            goals_count = self.count_objectives_meeting_goals_from_arrays([self.y_observed[i] for i in range(len(self.y_observed))])
+            if goals_count >= self.n_solutions_to_stop:
+                print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                break
             
             # 回调
             if self.callback:

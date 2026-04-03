@@ -9,6 +9,12 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 
+# 导入公式模块
+from utils.formula import (
+    FormulaValidator, FormulaEvaluator, SParameterData as FormulaSData,
+    FormulaSyntaxError, FormulaEvaluationError
+)
+
 
 @dataclass
 class ObjectiveResult:
@@ -119,7 +125,14 @@ class ObjectiveEvaluator:
         
         # 保存每次评估的数据
         self._save_evaluation(params, results)
-        
+
+        # 清除HFSS解决方案缓存，避免内存累积导致HFSS变卡
+        try:
+            if hasattr(self.hfss, 'clear_solution_cache'):
+                self.hfss.clear_solution_cache()
+        except Exception:
+            pass
+
         return obj_values, results
     
     def _evaluate_single(self, obj: Dict, params: np.ndarray) -> ObjectiveResult:
@@ -128,7 +141,10 @@ class ObjectiveEvaluator:
         name = obj.get('name', obj_type)
         
         try:
-            if obj_type in ['s_mag', 's_phase', 's_db']:
+            if obj_type == 'formula':
+                # 新的公式类型目标
+                value, actual = self._evaluate_formula(obj)
+            elif obj_type in ['s_mag', 's_phase', 's_db']:
                 value, actual = self._evaluate_s_parameter(obj)
             elif obj_type == 'gain':
                 value, actual = self._evaluate_gain(obj)
@@ -219,7 +235,7 @@ class ObjectiveEvaluator:
         # HFSS 的 dB(S(1,1)) 返回什么值就用什么值
         
         # 约束类型
-        constraint = obj.get('constraint', 'value')
+        constraint = obj.get('constraint', 'max')
         if constraint == 'max':
             actual = np.max(values)
         elif constraint == 'min':
@@ -227,12 +243,177 @@ class ObjectiveEvaluator:
         elif constraint == 'mean':
             actual = np.mean(values)
         else:
-            actual = values[0]
+            actual = np.max(values)  # 默认为 'max'，确保检查所有点
         
         # 转换为目标函数值
         value = self._actual_to_objective(actual, obj)
         
         return value, actual
+    
+    def _get_formula_s_data(self, obj: Dict) -> Optional[FormulaSData]:
+        """
+        获取用于公式计算的 S 参数数据
+        
+        Returns:
+            FormulaSData 对象，或 None（如果获取失败）
+        """
+        # 从 HFSS 获取所有需要的 S 参数数据
+        # 首先确定需要哪些端口
+        formula = obj.get('formula', '')
+        if not formula:
+            print("[WARN] _get_formula_s_data: no formula in obj")
+            return None
+        
+        # 解析公式找出需要的 S 参数
+        import re
+        s_params = re.findall(r'S\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)', formula)
+        if not s_params:
+            print(f"[WARN] _get_formula_s_data: no S params found in formula '{formula}'")
+            return None
+        
+        # 收集所有需要的端口
+        ports = []
+        for row, col in s_params:
+            port = (int(row), int(col))
+            if port not in ports:
+                ports.append(port)
+        
+        # 获取 S 参数数据
+        s_data = self.hfss.get_s_parameters(ports)
+        if s_data is None:
+            print("[WARN] _get_formula_s_data: get_s_parameters returned None")
+            return None
+        if s_data.get('freq') is None:
+            print("[WARN] _get_formula_s_data: freq is None")
+            return None
+        
+        # 创建 FormulaSData 对象
+        formula_s_data = FormulaSData()
+        
+        # 设置频率
+        formula_s_data.set_frequency(np.array(s_data['freq']))
+        
+        # 设置每个 S 参数
+        for port_key, port_data in s_data['ports'].items():
+            row, col = port_key
+            real_data = port_data.get('real')
+            imag_data = port_data.get('imag')
+            if real_data is None or imag_data is None:
+                print(f"[WARN] _get_formula_s_data: S({row},{col}) real or imag is None")
+                continue
+            try:
+                formula_s_data.set_s_param(row, col, real_data, imag_data)
+            except ValueError as e:
+                print(f"[WARN] _get_formula_s_data: set_s_param failed for S({row},{col}): {e}")
+                continue
+        
+        # 检查是否成功添加了任何 S 参数
+        if not formula_s_data.data:
+            print("[WARN] _get_formula_s_data: no S parameters were set")
+            return None
+        
+        return formula_s_data
+    
+    def _evaluate_formula(self, obj: Dict) -> Tuple[float, float]:
+        """
+        使用公式评估 S 参数
+        
+        Args:
+            obj: 目标配置
+            
+        Returns:
+            (value, actual_value)
+        """
+        formula = obj.get('formula', '')
+        if not formula:
+            print(f"[WARN] _evaluate_formula: no formula in objective '{obj.get('name', 'unknown')}'")
+            return 1000.0, 1000.0
+        
+        # 获取公式 S 参数数据
+        full_s_data = self._get_formula_s_data(obj)
+        if full_s_data is None:
+            print(f"[WARN] _evaluate_formula: failed to get S-parameter data for formula '{formula}' in objective '{obj.get('name', 'unknown')}'")
+            return 1000.0, 1000.0
+        
+        # 确定频率范围
+        freq = full_s_data.freq
+        if freq is None or len(freq) == 0:
+            print("[WARN] _evaluate_formula: freq is None or empty")
+            return 1000.0, 1000.0
+        
+        if 'freq_range' in obj and obj['freq_range']:
+            f_min, f_max = obj['freq_range']
+            if isinstance(f_min, list):
+                f_min, f_max = f_min[0], f_min[1]
+            mask = (freq >= f_min) & (freq <= f_max)
+        elif 'freq' in obj and obj['freq']:
+            idx = np.argmin(np.abs(freq - obj['freq']))
+            mask = np.zeros(len(freq), dtype=bool)
+            mask[idx] = True
+        else:
+            mask = np.ones(len(freq), dtype=bool)
+        
+        # 检查 mask 是否有效
+        if not np.any(mask):
+            print("[WARN] _evaluate_formula: no frequency points match the mask")
+            return 1000.0, 1000.0
+        
+        # 根据频率掩码筛选数据
+        freq_filtered = freq[mask]
+        
+        # 创建筛选后的 S 参数数据
+        s_data = FormulaSData()
+        s_data.set_frequency(freq_filtered)
+        
+        # 复制每个 S 参数的筛选后数据
+        for (row, col), port_data in full_s_data.data.items():
+            real = port_data.get('real')
+            imag = port_data.get('imag')
+            if real is None or imag is None:
+                print(f"[WARN] _evaluate_formula: S({row},{col}) real or imag is None")
+                continue
+            if len(real) == len(mask):
+                real = real[mask]
+                imag = imag[mask]
+            s_data.set_s_param(row, col, real, imag)
+        
+        # 检查是否成功设置了 S 参数
+        if not s_data.data:
+            print("[WARN] _evaluate_formula: no S parameters were set after filtering")
+            return 1000.0, 1000.0
+        
+        # 创建公式计算器
+        evaluator = FormulaEvaluator(s_data)
+        
+        try:
+            result = evaluator.evaluate(formula)
+            
+            # 如果结果是数组（未聚合），需要根据 constraint 聚合
+            if isinstance(result, np.ndarray):
+                constraint = obj.get('constraint', 'max')
+                if constraint == 'max':
+                    actual = float(np.max(result))
+                elif constraint == 'min':
+                    actual = float(np.min(result))
+                elif constraint == 'mean':
+                    actual = float(np.mean(result))
+                else:
+                    actual = float(np.max(result))
+            else:
+                # 结果已经是标量（聚合后的）
+                actual = float(result)
+            
+            # 转换为目标函数值
+            value = self._actual_to_objective(actual, obj)
+            
+            return value, actual
+            
+        except (FormulaEvaluationError, FormulaSyntaxError) as e:
+            print(f"[WARN] Formula evaluation failed for '{formula}': {e}")
+            return 1000.0, 1000.0
+        except Exception as e:
+            print(f"[WARN] Unexpected error evaluating formula '{formula}': {e}")
+            return 1000.0, 1000.0
     
     def _evaluate_gain(self, obj: Dict) -> Tuple[float, float]:
         """评估增益"""

@@ -1,34 +1,30 @@
-# HFSS-AI-Optimizer
+# HFSS-Optimizer
 
-A design optimization tool that integrates optimization algorithms and AI proxy models with HFSS (High Frequency Structure Simulator) automation control.
+HFSS 天线自动化优化工具，集成多种优化算法（MOPSO、MOBO、NSGA-II）和代理模型（GPR、RF、GPflow SVGP），通过代理模型技术大幅减少仿真次数。
 
-## Overview
+## 功能特性
 
-HFSS-AI-Optimizer enables efficient parameter optimization of RF/microwave devices using surrogate-assisted optimization algorithms. By leveraging proxy models like Gaussian Process Regression (GPR) and Random Forest (RF) combined with active learning strategies, this tool significantly reduces manual tuning costs and simulation time.
+- 🖥️ **GUI 界面** - PyQt6 现代化图形配置界面
+- 🚀 **多种算法** - MOPSO、MOBO、NSGA-II、Surrogate-NSGA-II
+- ⚙️ **代理加速** - GP/RF/GPflow SVGP 代理模型减少仿真次数
+- 📊 **实时可视化** - 优化进度图表自动生成
+- 💾 **历史复用** - 加载历史数据继续优化
+- 🔧 **公式目标** - 支持 `dB(S(1,1)) + max(dB(S(2,1)))` 等复杂表达式
 
-> **Note**: Neural network proxy models are under development. Currently, GPR and RF surrogate models are available.
+## 快速开始
 
-## Features
+### 1. 环境配置
 
-- 🖥️ **GUI Interface** - Full-featured visual configuration
-- 🚀 **Multiple Algorithms** - MOPSO, MOBO, NSGA-II, Surrogate-NSGA-II
-- ⚙️ **Surrogate Acceleration** - GP/RF proxy models reduce simulation count
-- 📊 **Real-time Visualization** - Automatic optimization progress charts
-- 💾 **History Reuse** - Load historical data to continue optimization
-- 🔧 **HFSS Automation** - Direct control via PyAEDT
-
-## Quick Start
-
-### 1. Environment Setup
-
-Run `环境配置.bat` or:
 ```bash
-python setup_env.py
+pip install -r requirements.txt
+pip install gpflow tensorflow  # 推荐安装
+python setup_env.py             # 一键配置
 ```
 
-### 2. Configure Your Project
+### 2. 配置项目
 
-Edit `user_config.json`:
+编辑 `user_config.json` 或使用 GUI：
+
 ```json
 {
   "hfss": {
@@ -38,125 +34,88 @@ Edit `user_config.json`:
     "sweep_name": "Sweep"
   },
   "variables": [
-    {"name": "Rl", "bounds": [10.0, 30.0], "unit": "mm", "precision": 2}
+    {"name": "Wm", "bounds": [0.2, 1.5], "unit": "mm"},
+    {"name": "Lp", "bounds": [8.0, 14.0], "unit": "mm"}
   ],
   "objectives": [
-    {"type": "s_db", "name": "S11_max", "goal": -10.0, "target": "minimize", "freq_range": [5.1, 7.2], "port": [1, 1]}
+    {
+      "name": "S11",
+      "type": "formula",
+      "freq_range": [5.7, 6.1],
+      "formula": "dB(S(1,1))",
+      "goal": -10.0,
+      "target": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "PeakGain",
+      "type": "peak_gain",
+      "freq": 5.9,
+      "goal": 7.5,
+      "target": "maximize",
+      "weight": 1.0
+    }
   ],
   "algorithm": {
     "algorithm": "mopso",
     "population_size": 20,
     "n_generations": 30,
     "use_surrogate": true,
-    "surrogate_type": "rf"
+    "surrogate_type": "gpflow_svgp"
   }
 }
 ```
 
-### 3. Launch Optimization
+### 3. 启动优化
 
 ```bash
-python gui.py
+python gui_pyqt6.py    # 现代化 GUI（推荐）
+python gui.py          # 传统 GUI
+python run.py          # 命令行模式
 ```
 
-## Algorithms
+## 算法
 
-| Algorithm | Description |
-|-----------|-------------|
-| **MOPSO** | Multi-Objective Particle Swarm Optimization |
-| **MOBO** | Multi-Objective Bayesian Optimization |
-| **NSGA-II** | Non-dominated Sorting Genetic Algorithm II |
-| **Surrogate-NSGA-II** | Proxy model assisted NSGA-II |
+| 算法 | 描述 |
+|------|------|
+| MOPSO | 多目标粒子群优化 |
+| MOBO | 多目标贝叶斯优化 |
+| NSGA-II | 非支配排序遗传算法 |
+| Surrogate-NSGA-II | 代理模型辅助 NSGA-II |
 
-## How It Works
+## 代理模型
 
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│   MOPSO     │────▶│  Evaluator   │────▶│    HFSS     │
-│  Algorithm  │     │              │     │  Simulation │
-└─────────────┘     └──────────────┘     └─────────────┘
-       ▲                    │
-       │                    ▼
-       │            ┌──────────────┐
-       │            │   Surrogate  │ (GP/RF)
-       │            │    Model     │
-       │            └──────────────┘
-       │                    │
-       └────────────────────┘
-              Train & Predict
-```
+| 模型 | 特点 |
+|------|------|
+| GPflow SVGP | 稀疏变分高斯过程，推荐使用 |
+| GPR | 高斯过程回归 |
+| RF | 随机森林 |
 
-### Surrogate Model Logic
-
-The surrogate model predicts objective values and uncertainty:
-
-- **Low uncertainty** (< threshold) → Use prediction, skip simulation
-- **High uncertainty** (≥ threshold) → Run real simulation
-
-This reduces total simulation count significantly.
-
-## Project Structure
+## 项目结构
 
 ```
-HFSS-AI-Optimizer/
-├── run.py                 # CLI entry
-├── gui.py                # GUI entry
-├── launch_gui.py        # GUI launcher
-├── setup_env.py         # Environment setup
-├── user_config.json     # User configuration
-├── core/                # Core modules
-│   ├── hfss_controller.py   # HFSS control
-│   ├── evaluator.py          # Objective evaluation
-│   └── surrogate.py         # Proxy model
-├── algorithms/           # Optimization algorithms
-│   ├── mopso.py        # MOPSO
-│   ├── mobo.py         # MOBO
-│   ├── nsga2.py        # NSGA-II
-│   └── surrogate.py     # Surrogate-NSGA-II
-├── utils/               # Visualization
-├── config/              # Configuration
-└── tests/              # Test tools
+HFSS-Optimizer/
+├── run.py                 # CLI 入口
+├── gui.py / gui_pyqt6.py  # GUI 入口
+├── setup_env.py           # 环境配置
+├── user_config.json       # 用户配置
+├── core/                  # 核心模块
+│   ├── hfss_controller.py # HFSS 控制
+│   ├── evaluator.py       # 目标评估
+│   └── surrogate.py       # 代理模型
+├── algorithms/            # 优化算法
+├── utils/                 # 工具函数
+└── tests/                 # 测试文件
 ```
 
-## Configuration
-
-### Variables
-
-```json
-{
-  "name": "variable_name",
-  "bounds": [min, max],
-  "unit": "mm",
-  "precision": 2
-}
-```
-
-### Objectives
-
-| Type | Description | Target |
-|------|-------------|--------|
-| `s_db` | S-parameter dB value | minimize/maximize |
-| `s_mag` | S-parameter magnitude | minimize/maximize |
-| `peak_gain` | Peak gain (dB) | maximize |
-
-### MOPSO Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `population_size` | 20 | Population size |
-| `n_generations` | 30 | Number of generations |
-| `use_surrogate` | true | Enable surrogate model |
-| `surrogate_type` | rf | 'gp' or 'rf' |
-| `surrogate_threshold` | 0.5 | Uncertainty threshold |
-
-## Requirements
+## 依赖
 
 - Python 3.8+
-- PyAEDT (HFSS automation)
-- NumPy, SciPy
-- scikit-learn
-- matplotlib
+- PyAEDT (HFSS 自动化)
+- NumPy, SciPy, scikit-learn
+- GPflow, TensorFlow (推荐)
+- PyQt6
 
-## License
+## 许可
 
 MIT

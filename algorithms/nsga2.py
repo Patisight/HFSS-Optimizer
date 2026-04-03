@@ -83,6 +83,12 @@ class NSGA2(BaseOptimizer):
                 population, objectives, all_results,
                 offspring, offspring_objectives, offspring_results
             )
+
+            # 早停检查
+            if self.should_stop_early(all_results):
+                goals_count = self.count_solutions_meeting_goals(all_results)
+                print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                break
             
             # 打印 Pareto 前沿
             current_fronts = self.fast_non_dominated_sort(population, objectives)

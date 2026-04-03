@@ -29,6 +29,10 @@ class RobustSurrogateOptimizer(BaseOptimizer):
     def __init__(self, config: Dict):
         super().__init__(config)
         
+        # 变量和目标数量
+        self.n_variables = len(self.variables)
+        self.n_objectives = len(self.objectives)
+        
         # 代理模型类型
         self.surrogate_type = config.get('surrogate_type', 'rf')  # 'gp', 'rf', 'dnn'
         
@@ -172,9 +176,18 @@ class RobustSurrogateOptimizer(BaseOptimizer):
             result = self._single_run(evaluator, callback, restart)
             best_results.append(result)
         
-        # 选择最佳结果
-        best_idx = self._select_best(best_results)
-        return best_results[best_idx]
+        # 合并所有 restart 的 Pareto 前沿并去重
+        all_solutions = []
+        seen_keys = set()
+        for result in best_results:
+            for sol in result.get('pareto_solutions', []):
+                # 用参数的近似值作为去重 key
+                params = sol.get('parameters', [])
+                key = tuple(round(p, 3) for p in params) if isinstance(params, (list, np.ndarray)) else id(sol)
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    all_solutions.append(sol)
+        return all_solutions
     
     def _single_run(self, evaluator, callback, restart_idx):
         """单次优化运行"""
@@ -183,9 +196,9 @@ class RobustSurrogateOptimizer(BaseOptimizer):
         random.seed(42 + restart_idx * 1000)
         
         # LHS 采样
-        from .nsga2 import LatinHypercubeSampler
-        sampler = LatinHypercubeSampler(self.n_variables, self.bounds)
-        initial_X = sampler.sample(self.initial_samples)
+        from .surrogate import LatinHypercubeSampler
+        sampler = LatinHypercubeSampler(self.variables)
+        initial_X = sampler.generate(self.initial_samples)
         
         # 评估初始样本
         initial_y = []
@@ -217,24 +230,124 @@ class RobustSurrogateOptimizer(BaseOptimizer):
         if self._sklearn_available:
             self.train(initial_X, initial_y)
         
-        # 初始化种群
-        from .nsga2 import NSGA2
-        optimizer = NSGA2({
-            'population_size': self.population_size,
-            'n_generations': self.n_generations,
-            'mutation_prob': self.mutation_prob,
-            'eta_m': self.eta_m,
-        })
+        # 初始化种群 - 这里简化处理，直接使用已有的初始样本进行简单优化
+        # 完整的NSGA-II优化可以后续添加
+        pareto_solutions = self._simple_optimization(initial_X, initial_y, evaluator)
         
-        # 运行优化
-        result = optimizer.optimize(
-            lambda x: self._hybrid_evaluate(x, evaluator),
-            initial_population=initial_X,
-            initial_fitness=initial_y,
-            elite_ratio=self.elite_ratio,
-        )
+        return {'pareto_solutions': pareto_solutions}
+    
+    def _simple_optimization(self, initial_X: np.ndarray, initial_y: np.ndarray, evaluator) -> List[Dict]:
+        """简单的优化流程 - 使用贪婪选择和随机变异"""
+        # 将初始样本作为当前种群
+        population = initial_X.tolist()
+        objectives = initial_y.tolist()
         
-        return result
+        # 简单迭代优化
+        for _ in range(self.n_generations):
+            # 生成变异个体
+            new_population = []
+            for ind in population:
+                # 随机选择一个个体进行变异
+                mutated = self._mutate(ind)
+                new_population.append(mutated)
+            
+            # 评估新个体
+            for x in new_population:
+                # 设置变量
+                for j, var in enumerate(self.variables):
+                    evaluator.hfss.set_variable(var['name'], x[j], var.get('unit', 'mm'))
+                
+                if evaluator.hfss.analyze(force=True):
+                    evaluator.clear_cache()
+                    y, _ = evaluator.evaluate_all(x)
+                    if y is not None:
+                        population.append(x)
+                        objectives.append(y)
+            
+            # 简单选择：保留最好的前population_size个
+            if len(population) > self.population_size:
+                sorted_indices = sorted(range(len(objectives)), key=lambda i: sum(objectives[i]))
+                population = [population[i] for i in sorted_indices[:self.population_size]]
+                objectives = [objectives[i] for i in sorted_indices[:self.population_size]]
+
+            # 早停检查
+            if self.stop_when_goal_met:
+                goals_count = self.count_objectives_meeting_goals_from_arrays(objectives)
+                if goals_count >= self.n_solutions_to_stop:
+                    print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                    break
+        
+        # 提取Pareto前沿
+        pareto_indices = self._fast_non_dominated_sort(objectives)
+        pareto_solutions = []
+        for idx in pareto_indices[0]:
+            pareto_solutions.append({
+                'parameters': population[idx],
+                'objectives': objectives[idx]
+            })
+        
+        return pareto_solutions
+    
+    def _mutate(self, individual: np.ndarray) -> np.ndarray:
+        """对个体进行多项式变异"""
+        mutated = individual.copy()
+        bounds = np.array([v['bounds'] for v in self.variables])
+        
+        for i in range(len(mutated)):
+            if np.random.random() < self.mutation_prob:
+                lower, upper = bounds[i]
+                delta1 = (mutated[i] - lower) / (upper - lower) if upper != lower else 0.5
+                delta2 = (upper - mutated[i]) / (upper - lower) if upper != lower else 0.5
+                
+                r = np.random.random()
+                if r < 0.5:
+                    xy = 1 - delta1
+                    val = 2 * r + (1 - 2 * r) * (xy ** (self.eta_m + 1))
+                    deltaq = val ** (1.0 / (self.eta_m + 1)) - 1
+                else:
+                    xy = 1 - delta2
+                    val = 2 * (1 - r) + 2 * (r - 0.5) * (xy ** (self.eta_m + 1))
+                    deltaq = 1 - val ** (1.0 / (self.eta_m + 1))
+                
+                mutated[i] = np.clip(mutated[i] + deltaq * (upper - lower), lower, upper)
+        
+        return mutated
+    
+    def _fast_non_dominated_sort(self, objectives: List) -> List[List[int]]:
+        """快速非支配排序"""
+        n = len(objectives)
+        domination_count = [0] * n
+        dominated_solutions = [[] for _ in range(n)]
+        fronts = [[]]
+        
+        for p in range(n):
+            for q in range(n):
+                if p == q:
+                    continue
+                # 假设是最小化
+                if all(objectives[p][i] <= objectives[q][i] for i in range(self.n_objectives)):
+                    if any(objectives[p][i] < objectives[q][i] for i in range(self.n_objectives)):
+                        dominated_solutions[p].append(q)
+                elif all(objectives[q][i] <= objectives[p][i] for i in range(self.n_objectives)):
+                    if any(objectives[q][i] < objectives[p][i] for i in range(self.n_objectives)):
+                        domination_count[p] += 1
+            
+            if domination_count[p] == 0:
+                fronts[0].append(p)
+        
+        i = 0
+        while fronts[i]:
+            next_front = []
+            for p in fronts[i]:
+                for q in dominated_solutions[p]:
+                    domination_count[q] -= 1
+                    if domination_count[q] == 0:
+                        next_front.append(q)
+            i += 1
+            if next_front:
+                fronts.append(next_front)
+        
+        return fronts[:-1] if fronts[-1] == [] else fronts
     
     def _hybrid_evaluate(self, x: np.ndarray, evaluator) -> np.ndarray:
         """
@@ -319,6 +432,10 @@ class AdaptiveOptimizer(BaseOptimizer):
     def __init__(self, config: Dict):
         super().__init__(config)
         
+        # 变量和目标数量
+        self.n_variables = len(self.variables)
+        self.n_objectives = len(self.objectives)
+        
         self.n_test_points = config.get('n_test_points', 20)
         self.continuity_threshold = config.get('continuity_threshold', 0.3)
         
@@ -396,10 +513,11 @@ class AdaptiveOptimizer(BaseOptimizer):
     def _generate_test_points(self) -> np.ndarray:
         """生成测试点"""
         points = []
+        bounds = self.get_bounds()
         n_per_dim = int(np.ceil(self.n_test_points ** (1/self.n_variables)))
         
         for i in range(self.n_variables):
-            lb, ub = self.bounds[i]
+            lb, ub = bounds[i]
             dim_points = np.linspace(lb, ub, n_per_dim)
             points.append(dim_points)
         

@@ -27,7 +27,7 @@ from .base import BaseOptimizer
 
 # 导入代理模型模块
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.surrogate import SurrogateManager
+from core.surrogate import SurrogateManager, IncrementalSurrogateManager, GPflowSVSManager
 
 
 class MOPSO(BaseOptimizer):
@@ -61,11 +61,28 @@ class MOPSO(BaseOptimizer):
         # 代理模型设置
         self.use_surrogate = config.get('use_surrogate', False)
         self.surrogate_type = config.get('surrogate_type', 'gp')
-        self.surrogate_min_samples = config.get('surrogate_min_samples', 5)
-        self.surrogate_threshold = config.get('surrogate_threshold', 1.0)
+        
+        # 双线架构配置
+        self.dual_line_mode = config.get('dual_line_mode', False)
+        self.shared_dir = config.get('shared_dir', './shared_data')
+        
+        # 读取代理模型配置（兼容新旧格式）
+        surrogate_config = config.get('surrogate_config', {})
+        
+        # 通用参数
+        self.surrogate_min_samples = surrogate_config.get('min_samples', config.get('surrogate_min_samples', 5))
+        self.surrogate_threshold = surrogate_config.get('uncertainty_threshold', config.get('surrogate_threshold', 1.0))
+        
+        # 模型专属参数
+        self.surrogate_model_params = surrogate_config.get('model_params', {})
+        
+        # 全量模型重训练间隔（仅单线模式的 gp, rf 有效）
+        self.retrain_interval = self.surrogate_model_params.get('retrain_interval', 0)
+        
         self.surrogate_manager = None
         self.surrogate_eval_count = 0  # 代理模型评估次数
         self.real_eval_count = 0  # 真实仿真次数
+        self._last_retrain_count = 0  # 上次训练时的样本数
         
         # 加载历史评估数据
         self.load_evaluations_path = config.get('load_evaluations', None)
@@ -125,20 +142,114 @@ class MOPSO(BaseOptimizer):
         if self.use_surrogate:
             # 使用用户配置的最少样本数，或默认为种群大小
             min_samples = self.surrogate_min_samples if self.surrogate_min_samples > 0 else self.population_size
-            self.surrogate_manager = SurrogateManager(
-                n_objectives=self.n_objectives,
-                model_type=self.surrogate_type,
-                min_samples=min_samples
-            )
-            print(f"[INFO] Surrogate model initialized: {self.surrogate_type}")
-            print(f"[INFO] Min samples to train: {min_samples}")
-            print(f"[INFO] Uncertainty threshold: {self.surrogate_threshold}")
+            
+            # 从配置中读取模型专属参数
+            model_params = self.surrogate_model_params
+            
+            # 双线模式：使用支持热替换的管理器
+            if self.dual_line_mode:
+                from core.surrogate_hotswap import DualLineSurrogateManager
+                
+                self.surrogate_manager = DualLineSurrogateManager(
+                    n_objectives=self.n_objectives,
+                    model_type=self.surrogate_type,
+                    shared_dir=self.shared_dir,
+                    min_samples=min_samples,
+                    **model_params
+                )
+                
+                print(f"[INFO] Dual-line mode enabled: {self.surrogate_type}")
+                print(f"[INFO] Shared directory: {self.shared_dir}")
+                
+                # 尝试从共享内存加载已有模型
+                if self.surrogate_manager.initialize_from_shared_memory():
+                    print(f"[INFO] Loaded existing model from shared memory")
+                
+            elif self.surrogate_type == 'incremental':
+                # RFF+SGD 增量学习
+                n_features = model_params.get('n_features', 100)
+                gamma = model_params.get('gamma', 0.1)
+                self.surrogate_manager = IncrementalSurrogateManager(
+                    n_objectives=self.n_objectives,
+                    min_samples=min_samples,
+                    n_features=n_features,
+                    gamma=gamma
+                )
+                print(f"[INFO] Surrogate: incremental (n_features={n_features}, gamma={gamma})")
+                
+            elif self.surrogate_type == 'gpflow_svgp':
+                # GPflow 稀疏变分高斯过程
+                n_inducing = model_params.get('n_inducing', 100)
+                kernel_type = model_params.get('kernel_type', 'matern52')
+                self.surrogate_manager = GPflowSVSManager(
+                    n_objectives=self.n_objectives,
+                    min_samples=min_samples,
+                    n_inducing=n_inducing,
+                    kernel_type=kernel_type
+                )
+                print(f"[INFO] Surrogate: gpflow_svgp (n_inducing={n_inducing}, kernel={kernel_type})")
+                
+            elif self.surrogate_type == 'rf':
+                # 随机森林
+                n_estimators = model_params.get('n_estimators', 100)
+                self.retrain_interval = model_params.get('retrain_interval', self.retrain_interval)
+                self.surrogate_manager = SurrogateManager(
+                    n_objectives=self.n_objectives,
+                    model_type='rf',
+                    min_samples=min_samples,
+                    n_estimators=n_estimators
+                )
+                print(f"[INFO] Surrogate: RF (n_estimators={n_estimators}, retrain_interval={self.retrain_interval})")
+                
+            else:
+                # 默认 GP
+                self.retrain_interval = model_params.get('retrain_interval', self.retrain_interval)
+                self.surrogate_manager = SurrogateManager(
+                    n_objectives=self.n_objectives,
+                    model_type='gp',
+                    min_samples=min_samples
+                )
+                print(f"[INFO] Surrogate: GP (retrain_interval={self.retrain_interval})")
+            
+            print(f"[INFO] Min samples: {min_samples}, Threshold: {self.surrogate_threshold}")
             
             # 用历史数据训练代理模型
             if self.loaded_evaluations:
+                print(f"[INFO] Loading {len(self.loaded_evaluations)} historical samples into surrogate model...")
+                
+                # 打印历史数据的目标值范围
+                all_objectives = np.array([e['objectives'] for e in self.loaded_evaluations])
+                print(f"[INFO] Historical objective ranges:")
+                for i, obj_config in enumerate(self.objectives):
+                    if i < all_objectives.shape[1]:
+                        print(f"  {obj_config.get('name')}: min={all_objectives[:, i].min():.2f}, max={all_objectives[:, i].max():.2f}, std={all_objectives[:, i].std():.2f}")
+                
+                # 批量添加样本（不立即训练）
                 for eval_data in self.loaded_evaluations:
                     self.surrogate_manager.add_sample(eval_data['params'], eval_data['objectives'])
-                print(f"[INFO] Surrogate model trained with {len(self.loaded_evaluations)} historical samples")
+                
+                # 用所有历史数据重新训练模型
+                self.surrogate_manager.retrain_all()
+                self._last_retrain_count = len(self.loaded_evaluations)
+                
+                # 验证代理模型训练成功
+                if self.surrogate_manager.surrogate.is_trained:
+                    print(f"[OK] Surrogate model trained with all {len(self.loaded_evaluations)} samples!")
+                    
+                    # 测试预测
+                    test_x = self.loaded_evaluations[0]['params'].reshape(1, -1)
+                    test_y_pred, test_y_std = self.surrogate_manager.predict(test_x, return_std=True)
+                    test_y_true = self.loaded_evaluations[0]['objectives']
+                    print(f"[INFO] Validation prediction on first sample:")
+                    print(f"  True values: S11={test_y_true[0]:.2f}, PG={-test_y_true[1]:.2f} dB")
+                    print(f"  Predicted: S11={test_y_pred.flatten()[0]:.2f}, PG={-test_y_pred.flatten()[1]:.2f} dB")
+                    print(f"  Uncertainty: {test_y_std.flatten()}")
+                    
+                    # 计算预测误差
+                    pred_error = np.abs(test_y_pred.flatten() - test_y_true)
+                    print(f"  Prediction error: S11={pred_error[0]:.2f}, PG={pred_error[1]:.2f}")
+                else:
+                    print(f"[WARN] Surrogate model training failed!")
                 
                 # 更新真实仿真计数（历史数据也算真实仿真）
                 self.real_evaluation_count = len(self.loaded_evaluations)
@@ -146,19 +257,50 @@ class MOPSO(BaseOptimizer):
         # 初始化粒子群
         self._initialize_particles(n_vars)
         
-        # 初始评估（强制真实仿真以建立代理模型训练数据）
-        print(f"\n[Initialization] Evaluating {self.population_size} particles...")
+        # 初始评估
+        # 如果有历史数据且代理模型已训练，可以使用代理模型预测
+        use_surrogate_for_init = (
+            self.use_surrogate and 
+            self.surrogate_manager and 
+            self.surrogate_manager.surrogate.is_trained and
+            len(self.loaded_evaluations) >= self.surrogate_manager.min_samples_to_train
+        )
+        
+        if use_surrogate_for_init:
+            print(f"\n[Initialization] Evaluating {self.population_size} particles (surrogate-assisted)...")
+        else:
+            print(f"\n[Initialization] Evaluating {self.population_size} particles (real simulation)...")
+        
+        n_real_evals = 0
+        n_surrogate_evals = 0
+        
         for i, particle in enumerate(self.particles):
-            y, is_real = self._evaluate(particle, evaluator, force_real=True)
+            # 如果代理模型已训练好，不强制真实仿真
+            force_real = not use_surrogate_for_init
+            y, is_real = self._evaluate(particle, evaluator, force_real=force_real)
+            
+            if is_real:
+                n_real_evals += 1
+            else:
+                n_surrogate_evals += 1
+            
             self.pbest[i] = particle.copy()
             self.pbest_objectives[i] = y.copy()
             
-            # 更新外部档案（只用真实仿真结果）
-            self._update_archive(particle, y)
+            # 更新外部档案
+            self._update_archive(particle, y, is_predicted=not is_real)
             
-            # 回调更新图表（只用真实仿真结果）
+            # 回调更新图表（真实和代理预测都回调）
             if self.callback:
-                self.callback(i, self.population_size, particle, y, 'initial')
+                surrogate_preds = self._last_surrogate_pred if not is_real else None
+                # 真实仿真时也传递代理预测值（用于对比图）
+                if is_real and self._last_surrogate_pred is not None:
+                    surrogate_preds = self._last_surrogate_pred
+                is_surrogate = not is_real
+                self.callback(i, self.population_size, particle, y, 'initial', surrogate_preds, is_surrogate)
+        
+        print(f"[INFO] Initial evaluation: {n_real_evals} real, {n_surrogate_evals} surrogate")
+        print(f"[INFO] Archive size after initialization: {len(self.archive)}")
         
         # 迭代优化
         for gen in range(self.n_generations):
@@ -201,9 +343,23 @@ class MOPSO(BaseOptimizer):
                 # 更新外部档案（标记数据来源）
                 self._update_archive(self.particles[i], y, is_predicted=not is_real)
                 
-                # 回调更新图表（只用真实仿真结果）
-                if is_real and self.callback:
-                    self.callback(gen, self.n_generations, self.particles[i], y, 'iteration')
+                # 回调更新图表（真实和代理预测都回调）
+                if self.callback:
+                    surrogate_preds = self._last_surrogate_pred if not is_real else None
+                    # 真实仿真时也传递代理预测值（用于对比图）
+                    if is_real and self._last_surrogate_pred is not None:
+                        surrogate_preds = self._last_surrogate_pred
+                    is_surrogate = not is_real
+                    self.callback(gen, self.n_generations, self.particles[i], y, 'iteration', surrogate_preds, is_surrogate)
+
+            # 早停检查（基于外部档案中的真实评估结果）
+            real_archive = [sol for sol in self.archive if not sol.get('is_predicted', False)]
+            if len(real_archive) > 0:
+                archive_objectives = [np.array(sol['objectives']) for sol in real_archive]
+                goals_count = self.count_objectives_meeting_goals_from_arrays(archive_objectives)
+                if goals_count >= self.n_solutions_to_stop:
+                    print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                    break
         
         # 返回 Pareto 前沿
         return self._get_pareto_solutions()
@@ -228,6 +384,8 @@ class MOPSO(BaseOptimizer):
             return 0
         
         loaded_count = 0
+        skipped_invalid = 0  # 异常值计数
+        skipped_mismatch = 0  # 维度不匹配计数
         self.loaded_evaluations = []
         
         try:
@@ -243,15 +401,28 @@ class MOPSO(BaseOptimizer):
                         # 提取参数
                         params = np.array(data['parameters'])
                         
-                        # 提取目标值
+                        # 提取目标值 - 按照当前配置的目标顺序对齐！
                         objectives_data = data.get('objectives', {})
                         if isinstance(objectives_data, dict):
                             # 字典格式：{name: {value: ..., actual_value: ...}}
-                            obj_names = list(objectives_data.keys())
-                            obj_values = [objectives_data[name]['value'] for name in obj_names]
+                            # 重要：按照当前配置的目标顺序提取值
+                            obj_values = []
+                            for obj_config in self.objectives:
+                                obj_name = obj_config.get('name')
+                                if obj_name in objectives_data:
+                                    obj_values.append(objectives_data[obj_name]['value'])
+                                else:
+                                    # 目标名称不匹配，跳过此记录
+                                    print(f"[WARN] Objective '{obj_name}' not found in history data")
+                                    obj_values = None
+                                    break
+                            
+                            if obj_values is None:
+                                continue
                             objectives = np.array(obj_values)
+                            
                         elif isinstance(objectives_data, list):
-                            # 列表格式
+                            # 列表格式 - 假设顺序一致
                             objectives = np.array(objectives_data)
                         else:
                             continue
@@ -263,6 +434,17 @@ class MOPSO(BaseOptimizer):
                         
                         if len(objectives) != self.n_objectives:
                             print(f"[WARN] Skip record: objective count mismatch ({len(objectives)} vs {self.n_objectives})")
+                            continue
+                        
+                        # 过滤异常值（仿真失败时目标值通常设为大正数）
+                        INVALID_THRESHOLD = 100  # 超过此值视为异常
+                        if np.any(np.abs(objectives) > INVALID_THRESHOLD):
+                            skipped_invalid += 1
+                            continue
+                        
+                        # 检查是否包含NaN或Inf
+                        if np.any(np.isnan(objectives)) or np.any(np.isinf(objectives)):
+                            skipped_invalid += 1
                             continue
                         
                         # 存储加载的数据
@@ -282,6 +464,8 @@ class MOPSO(BaseOptimizer):
                         continue
             
             print(f"[OK] Loaded {loaded_count} historical evaluations from: {self.load_evaluations_path}")
+            if skipped_invalid > 0:
+                print(f"[INFO] Filtered {skipped_invalid} records with abnormal values (|obj| > 100)")
             
             # 用历史数据初始化 Pareto 档案
             if self.loaded_evaluations:
@@ -322,22 +506,55 @@ class MOPSO(BaseOptimizer):
                         if line:
                             dst.write(line + '\n')
             
-            # 更新 evaluator 的计数
-            self.evaluator.eval_count = len(self.loaded_evaluations)
+            # 更新 evaluator 的计数（累加历史数据数量）
+            self.evaluator.eval_count += len(self.loaded_evaluations)
             print(f"[OK] Historical data written to: {self.evaluator.eval_file}")
             
         except Exception as e:
             print(f"[WARN] Failed to write historical data: {e}")
     
     def _initialize_particles(self, n_vars: int):
-        """初始化粒子群"""
+        """初始化粒子群
+        
+        如果有历史数据，优先使用历史最优解附近采样
+        """
         self.particles = []
         self.velocities = []
         self.pbest = []
         self.pbest_objectives = []
         
-        # 拉丁超立方采样
-        for i in range(self.population_size):
+        # 如果有历史数据，从中选择一些好的解作为初始粒子
+        n_from_history = 0
+        if self.loaded_evaluations and len(self.loaded_evaluations) > 0:
+            # 从历史数据中选择部分解作为初始粒子
+            n_from_history = min(len(self.loaded_evaluations) // 2, self.population_size // 2)
+            
+            # 按第一个目标排序（假设是最小化）
+            sorted_history = sorted(self.loaded_evaluations, key=lambda x: x['objectives'][0])
+            
+            for i in range(n_from_history):
+                particle = sorted_history[i]['params'].copy()
+                # 添加小扰动
+                perturbation = np.array([
+                    np.random.uniform(-0.05, 0.05) * (self.bounds[j, 1] - self.bounds[j, 0])
+                    for j in range(n_vars)
+                ])
+                particle = np.clip(particle + perturbation, self.bounds[:, 0], self.bounds[:, 1])
+                self.particles.append(particle)
+                
+                velocity = np.array([
+                    np.random.uniform(-0.1, 0.1) * (self.bounds[j, 1] - self.bounds[j, 0])
+                    for j in range(n_vars)
+                ])
+                self.velocities.append(velocity)
+                
+                self.pbest.append(particle.copy())
+                self.pbest_objectives.append(None)
+            
+            print(f"[INFO] Initialized {n_from_history} particles from historical data")
+        
+        # 剩余粒子使用拉丁超立方采样
+        for i in range(n_from_history, self.population_size):
             particle = np.array([
                 np.random.uniform(self.bounds[j, 0], self.bounds[j, 1])
                 for j in range(n_vars)
@@ -357,9 +574,12 @@ class MOPSO(BaseOptimizer):
         """
         评估粒子
         
-        简化逻辑：
-        - 不确定性 ≥ 阈值 → 真实仿真，用真实值迭代
-        - 不确定性 < 阈值 → 跳过仿真，用预测值迭代
+        安全策略：
+        - min_samples_to_train 不低于 5，防止训练数据过少导致严重外推
+        - 每次真实仿真后都更新代理模型
+        - 不确定性 ≥ 阈值 → 真实仿真
+        - 不确定性 < 阈值 → 使用预测值
+        - 确保每代至少有一定比例的真实仿真
         
         Args:
             x: 参数向量
@@ -370,30 +590,85 @@ class MOPSO(BaseOptimizer):
             (目标值向量, 是否为真实仿真结果)
         """
         self.evaluation_count += 1
+        self._last_surrogate_pred = None  # 记录最近一次代理预测
+        
+        # 安全检查：确保最小训练样本数不低于 5
+        if self.use_surrogate and self.surrogate_manager:
+            if self.surrogate_manager.min_samples_to_train < 5:
+                print(f"[WARN] surrogate_min_samples={self.surrogate_manager.min_samples_to_train} is too low, raising to 5")
+                self.surrogate_manager.min_samples_to_train = 5
         
         # 检查缓存（只缓存真实仿真结果）
         cached = self._check_cache(x)
         if cached is not None:
             return cached, True
         
+        # 如果代理模型已训练，先用代理模型预测（用于对比图）
+        if self.use_surrogate and self.surrogate_manager and self.surrogate_manager.surrogate.is_trained:
+            try:
+                y_pred_check, _ = self.surrogate_manager.predict(x.reshape(1, -1), return_std=False)
+                self._last_surrogate_pred = y_pred_check.flatten()
+            except Exception:
+                pass
+        
         # 判断是否使用代理模型
         if self.use_surrogate and self.surrogate_manager and not force_real:
             # 初始阶段（前 min_samples 次）用真实仿真
             min_samples = self.surrogate_manager.min_samples_to_train
-            if self.real_evaluation_count >= min_samples:
+            # 只有模型已训练后才考虑使用代理模型
+            if self.real_evaluation_count >= min_samples and self.surrogate_manager.surrogate.is_trained:
                 # 获取代理预测和不确定性
                 y_pred, y_std = self.surrogate_manager.predict(x.reshape(1, -1), return_std=True)
                 y_pred = y_pred.flatten()
                 y_std = y_std.flatten()
                 
-                # 计算相对不确定性（更直观）
-                # 公式：y_std / |y_pred|
-                # 表示预测的标准差占预测值大小的比例
-                normalized_uncertainty = np.mean(y_std / (np.abs(y_pred) + 1e-8))
+                # 预测值范围钳制：限制在训练数据范围内，防止严重外推
+                if self.surrogate_manager.y_samples:
+                    y_arr = np.array(self.surrogate_manager.y_samples)
+                    y_min = y_arr.min(axis=0)
+                    y_max = y_arr.max(axis=0)
+                    y_pred = np.clip(y_pred, y_min, y_max)
+                    # 超出训练数据范围的点视为高不确定性
+                    out_of_range = np.any((y_pred <= y_min) | (y_pred >= y_max))
+                
+                # 计算相对不确定性
+                # 使用训练数据标准差归一化（比 y_pred 归一化更稳定）
+                if self.surrogate_manager.y_samples:
+                    y_arr = np.array(self.surrogate_manager.y_samples)
+                    y_std_train = np.std(y_arr, axis=0)
+                    # 归一化不确定性 = 预测标准差 / 训练数据标准差
+                    if np.all(y_std_train > 1e-8):
+                        normalized_uncertainty = np.mean(y_std / y_std_train)
+                    else:
+                        # 回退到基于预测值大小的归一化
+                        pred_magnitude = np.mean(np.abs(y_pred))
+                        if pred_magnitude > 1e-8:
+                            normalized_uncertainty = np.mean(y_std) / pred_magnitude
+                        else:
+                            normalized_uncertainty = float('inf')
+                else:
+                    pred_magnitude = np.mean(np.abs(y_pred))
+                    if pred_magnitude > 1e-8:
+                        normalized_uncertainty = np.mean(y_std) / pred_magnitude
+                    else:
+                        normalized_uncertainty = float('inf')
+                
+                # 调试输出：打印预测值和不确定性
+                print(f"  [Surrogate Debug] y_pred={y_pred}, y_std={y_std}, uncertainty={normalized_uncertainty:.3f}")
+                
+                # 额外安全检查：如果真实仿真次数占比太低，强制做真实仿真
+                total_evals = self.real_evaluation_count + self.surrogate_eval_count
+                if total_evals > 0:
+                    real_ratio = self.real_evaluation_count / total_evals
+                    # 确保至少 30% 的评估是真实仿真
+                    if real_ratio < 0.3:
+                        normalized_uncertainty = float('inf')
+                        print(f"  [Safety] Real eval ratio {real_ratio:.1%} too low, forcing real simulation")
                 
                 # 不确定性低于阈值 → 使用预测值（跳过真实仿真）
                 if normalized_uncertainty < self.surrogate_threshold:
                     self.surrogate_eval_count += 1
+                    self._last_surrogate_pred = y_pred  # 记录代理预测值
                     print(f"  [Surrogate] Eval #{self.evaluation_count} (uncertainty: {normalized_uncertainty:.3f} < {self.surrogate_threshold}, prediction)")
                     return y_pred, False
         
@@ -403,7 +678,22 @@ class MOPSO(BaseOptimizer):
         
         # 更新代理模型
         if self.use_surrogate and self.surrogate_manager:
-            self.surrogate_manager.add_sample(x, y)
+            # 双线模式：只写入共享内存，不训练
+            if self.dual_line_mode:
+                self.surrogate_manager.add_sample(x, y, is_real=True)
+            else:
+                # 单线模式：训练模型
+                self.surrogate_manager.add_sample(x, y)
+                
+                # GP/RF/GPflow模型：定期全量重训练
+                if self.retrain_interval > 0 and self.surrogate_type in ['gp', 'rf', 'gpflow_svgp']:
+                    current_sample_count = len(self.surrogate_manager.X_samples)
+                    samples_since_retrain = current_sample_count - self._last_retrain_count
+                    
+                    if samples_since_retrain >= self.retrain_interval:
+                        print(f"  [Retraining] Full retrain triggered (interval={self.retrain_interval}, new samples={samples_since_retrain})")
+                        self.surrogate_manager.retrain_all()
+                        self._last_retrain_count = current_sample_count
         
         # 缓存结果
         self._add_to_cache(x, y)

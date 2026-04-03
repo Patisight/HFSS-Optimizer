@@ -9,8 +9,8 @@ from .base import BaseOptimizer
 from .nsga2 import NSGA2
 
 
-class SurrogateModel:
-    """高斯过程代理模型"""
+class GPSurrogateModel:
+    """高斯过程代理模型 (GP + StandardScaler)"""
     
     def __init__(self, n_variables: int, n_objectives: int):
         self.n_variables = n_variables
@@ -96,7 +96,7 @@ class SurrogateModel:
             
             return np.array(predictions), np.array(uncertainties)
             
-        except:
+        except Exception:
             return None
 
 
@@ -194,6 +194,12 @@ class SurrogateAssistedNSGA2(NSGA2):
                 population, objectives, all_results,
                 offspring[0], offspring[1], offspring[2]
             )
+
+            # 早停检查
+            if self.should_stop_early(all_results):
+                goals_count = self.count_solutions_meeting_goals(all_results)
+                print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                break
             
             current_fronts = self.fast_non_dominated_sort(population, objectives)
             if current_fronts and current_fronts[0]:
@@ -216,7 +222,7 @@ class SurrogateAssistedNSGA2(NSGA2):
     
     def _init_surrogate(self):
         """初始化代理模型"""
-        self.surrogate = SurrogateModel(
+        self.surrogate = GPSurrogateModel(
             len(self.variables),
             len(self.objectives)
         )

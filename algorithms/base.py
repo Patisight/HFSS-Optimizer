@@ -20,7 +20,11 @@ class BaseOptimizer(ABC):
         self.config = config
         self.variables = config.get('variables', [])
         self.objectives = config.get('objectives', [])
-        
+
+        # 早停配置
+        self.stop_when_goal_met = config.get('stop_when_goal_met', False)
+        self.n_solutions_to_stop = config.get('n_solutions_to_stop', 3)
+
         # 统计信息
         self.evaluation_count = 0
         self.real_evaluation_count = 0
@@ -181,3 +185,89 @@ class BaseOptimizer(ABC):
             格式化后的参数向量
         """
         return np.array([self.format_param(p, i) for i, p in enumerate(params)])
+
+    def count_solutions_meeting_goals(self, results_list: List) -> int:
+        """
+        统计有多少个解的所有目标都达到了
+
+        Args:
+            results_list: 评估结果列表，每个元素是 {obj_name: ObjectiveResult} 字典
+
+        Returns:
+            达标的解数量
+        """
+        count = 0
+        for results in results_list:
+            if results is None:
+                continue
+            all_met = True
+            for name, res in results.items():
+                if isinstance(res, dict):
+                    goal_met = res.get('goal_met')
+                else:
+                    goal_met = res.goal_met
+                if goal_met is not True:
+                    all_met = False
+                    break
+            if all_met:
+                count += 1
+        return count
+
+    def should_stop_early(self, results_list: List) -> bool:
+        """
+        判断是否应该早停
+
+        Args:
+            results_list: 当前种群所有个体的评估结果列表
+
+        Returns:
+            是否应该停止
+        """
+        if not self.stop_when_goal_met:
+            return False
+        count = self.count_solutions_meeting_goals(results_list)
+        return count >= self.n_solutions_to_stop
+
+    def check_objectives_meet_goals(self, obj_values: np.ndarray) -> bool:
+        """
+        检查一组目标值是否全部达到目标（用于MOPSO等算法）
+
+        Args:
+            obj_values: 目标值数组
+
+        Returns:
+            是否全部达标
+        """
+        for i, obj_config in enumerate(self.objectives):
+            if i >= len(obj_values):
+                return False
+            val = obj_values[i]
+            target = obj_config.get('target', 'minimize')
+            goal = obj_config.get('goal')
+
+            if goal is None:
+                continue
+
+            if target == 'minimize':
+                if val > goal:
+                    return False
+            elif target == 'maximize':
+                if val < goal:
+                    return False
+        return True
+
+    def count_objectives_meeting_goals_from_arrays(self, objectives_array: List[np.ndarray]) -> int:
+        """
+        统计有多少个解的所有目标都达到了（基于目标值数组）
+
+        Args:
+            objectives_array: 目标值数组列表
+
+        Returns:
+            达标的解数量
+        """
+        count = 0
+        for obj_values in objectives_array:
+            if self.check_objectives_meet_goals(obj_values):
+                count += 1
+        return count

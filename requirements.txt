@@ -1,27 +1,26 @@
 # HFSS 天线优化程序依赖库
 # 使用方法: pip install -r requirements.txt
 
-# 核心依赖
+# ===== 核心依赖（必需）=====
 numpy>=1.21.0
 pandas>=1.3.0
 scipy>=1.7.0
+scikit-learn>=1.0.0
+matplotlib>=3.5.0
+psutil>=5.8.0
 
-# HFSS 控制接口
+# ===== HFSS 控制接口 =====
 # 注意: pyaedt 版本需要与 HFSS 版本匹配
-# HFSS 2023R1 (v231) 推荐 pyaedt>=0.6.0,<0.9.0 或 pyaedt>=0.20.0
-# 如果遇到 API 兼容性问题，请尝试安装指定版本:
-#   pip install pyaedt==0.6.70  (推荐用于 HFSS 2023R1)
-#   或 pip install pyaedt==0.7.0
 pyaedt>=0.6.70
 
-# 优化算法
+# ===== 优化算法 =====
 scikit-optimize>=0.9.0
 
-# 代理模型 (高斯过程)
-scikit-learn>=1.0.0
+# ===== GUI =====
+PyQt6>=6.0
 
-# 可视化 (可选)
-matplotlib>=3.5.0
-
-# 其他工具
-psutil>=5.8.0
+# ===== 代理模型（推荐）=====
+# GPflow SVGP - 稀疏变分高斯过程代理模型
+# 安装命令: pip install gpflow tensorflow
+# gpflow>=2.0
+# tensorflow>=2.10

@@ -136,10 +136,13 @@ ALGORITHM_CONFIG = {
     'algorithm': 'mobo',
     
     # surrogate_type: 代理模型类型（仅 surrogate/robust 模式）
-    # - 'gp': 高斯过程（平滑函数效果好）
-    # - 'rf': 随机森林（对不连续函数更鲁棒，推荐天线优化）
-    # - 'dnn': 深度神经网络（强非线性拟合能力）
-    'surrogate_type': 'rf',
+    # - 'gp': 高斯过程（全量训练，适合平滑函数）
+    # - 'rf': 随机森林（全量训练，对不连续函数更鲁棒）
+    # - 'incremental': RFF+SGD增量学习（轻量级，单样本更新能力）
+    # - 'gpflow_svgp': 稀疏变分GP（强大，非线性+增量学习+不确定性估计）
+    #     推荐用于：多变量、非凸、有突变、复杂的天线优化场景
+    #     需要安装: pip install gpflow tensorflow
+    'surrogate_type': 'gpflow_svgp',
     
     # ===== 多起点优化 =====
     # n_restarts: 多起点次数
@@ -197,6 +200,14 @@ ALGORITHM_CONFIG = {
     
     # update_interval: 代理模型更新间隔
     'update_interval': 10,
+
+    # ===== 早停参数 =====
+    # stop_when_goal_met: 当达到目标时是否提前停止
+    'stop_when_goal_met': True,
+    
+    # n_solutions_to_stop: 达到目标的解数量阈值，触发早停
+    # - 例如设置为5，表示当有5个以上解全部达标时停止
+    'n_solutions_to_stop': 5,
 }
 
 # ============================================================================

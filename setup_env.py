@@ -40,7 +40,7 @@ def print_step(step: int, total: int, text: str):
 
 def print_ok(text: str = "OK"):
     """打印成功"""
-    print(f"{Colors.GREEN}[✓] {text}{Colors.END}")
+    print(f"{Colors.GREEN}[OK] {text}{Colors.END}")
 
 
 def print_warn(text: str):
@@ -50,7 +50,7 @@ def print_warn(text: str):
 
 def print_error(text: str):
     """打印错误"""
-    print(f"{Colors.RED}[✗] {text}{Colors.END}")
+    print(f"{Colors.RED}[X] {text}{Colors.END}")
 
 
 def print_info(text: str):
@@ -66,17 +66,24 @@ class EnvironmentSetup:
         'numpy': 'numpy>=1.21.0',
         'pandas': 'pandas>=1.3.0',
         'scipy': 'scipy>=1.7.0',
-        'pyaedt': 'pyaedt>=0.6.70',  # 注意: 版本需与 HFSS 匹配
+        'pyaedt': 'pyaedt>=0.6.70',
         'skopt': 'scikit-optimize>=0.9.0',
         'sklearn': 'scikit-learn>=1.0.0',
         'matplotlib': 'matplotlib>=3.5.0',
         'psutil': 'psutil>=5.8.0',
+        'PyQt6': 'PyQt6>=6.0',
     }
     
     # 可选的依赖包
     OPTIONAL_PACKAGES = {
         'PIL': 'Pillow>=9.0.0',  # 图像处理
         'openpyxl': 'openpyxl>=3.0.0',  # Excel 支持
+    }
+
+    # 代理模型增强依赖（用于gpflow_svgp和incremental增量学习代理模型）
+    SURROGATE_ENHANCED_PACKAGES = {
+        'gpflow': 'gpflow>=2.0',  # 稀疏变分高斯过程（推荐用于复杂场景）
+        'tensorflow': 'tensorflow>=2.10',  # GPflow依赖
     }
     
     def __init__(self):
@@ -198,7 +205,30 @@ class EnvironmentSetup:
                 missing_optional.append(package)
         
         return missing_optional
-    
+
+    def check_surrogate_enhanced_packages(self) -> List[str]:
+        """检测代理模型增强依赖（gpflow, tensorflow）
+
+        这些包用于支持 gpflow_svgp 和 incremental 增量学习代理模型
+        """
+        print_info("\n代理模型增强依赖 (用于增量学习代理模型):")
+        missing_surrogate = []
+
+        for module, package in self.SURROGATE_ENHANCED_PACKAGES.items():
+            try:
+                __import__(module)
+                print_ok(f"{package.split('>=')[0]} - 已安装")
+            except ImportError:
+                print_warn(f"{package} - 未安装")
+                print_info(f"  → 如需使用 gpflow_svgp 或 incremental 代理模型，请安装此包")
+                missing_surrogate.append(package)
+
+        if missing_surrogate:
+            print_info("\n安装命令: pip install gpflow tensorflow")
+            print_info("或使用简化版: pip install gpflow")
+
+        return missing_surrogate
+
     def find_hfss(self) -> List[str]:
         """检测 HFSS 安装路径"""
         print_step(4, 6, "检测 HFSS 安装")
@@ -397,7 +427,7 @@ class EnvironmentSetup:
         
         return success
     
-    def run_full_setup(self, install: bool = True):
+    def run_full_setup(self, install: bool = True, install_surrogate: bool = False):
         """运行完整配置流程"""
         print_header("HFSS 天线优化程序 - 一键环境配置")
         print(f"时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -413,6 +443,9 @@ class EnvironmentSetup:
         
         # 检测可选包
         self.check_optional_packages()
+
+        # 检测代理模型增强依赖
+        surrogate_missing = self.check_surrogate_enhanced_packages()
         
         # 4. 检测 HFSS
         self.find_hfss()
@@ -420,6 +453,11 @@ class EnvironmentSetup:
         # 5. 安装缺失依赖
         if install and missing:
             self.install_packages(missing)
+        
+        # 5.5 安装代理模型增强依赖（可选）
+        if install_surrogate and surrogate_missing:
+            print_info("\n安装代理模型增强依赖...")
+            self.install_packages(surrogate_missing)
         
         # 6. 创建默认配置
         self.create_default_config()
@@ -453,7 +491,7 @@ class EnvironmentSetup:
                 print(f"  - {e}")
             print(f"\n{Colors.RED}配置未完成，请解决上述问题后重试{Colors.END}")
         else:
-            print(f"\n{Colors.GREEN}✓ 环境配置完成！{Colors.END}")
+            print(f"\n{Colors.GREEN}[OK] 环境配置完成！{Colors.END}")
             print("\n接下来可以:")
             print("  1. 编辑 user_config.json 配置项目路径和变量")
             print("  2. 运行 启动优化程序.bat 开始优化")
@@ -466,6 +504,8 @@ def main():
     parser = argparse.ArgumentParser(description='HFSS 优化程序环境配置')
     parser.add_argument('--check', action='store_true', help='仅检测环境，不安装')
     parser.add_argument('--install', action='store_true', help='仅安装缺失依赖')
+    parser.add_argument('--surrogate', action='store_true', help='安装代理模型增强依赖 (gpflow, tensorflow)')
+    parser.add_argument('--full', action='store_true', help='完整安装（包括代理模型增强依赖）')
     
     args = parser.parse_args()
     
@@ -486,8 +526,18 @@ def main():
             setup.verify_installation()
         else:
             print_ok("所有依赖已安装")
+    elif args.surrogate:
+        # 仅安装代理模型依赖
+        surrogate_missing = setup.check_surrogate_enhanced_packages()
+        if surrogate_missing:
+            setup.install_packages(surrogate_missing)
+        else:
+            print_ok("代理模型依赖已安装")
+    elif args.full:
+        # 完整安装（包括代理模型）
+        setup.run_full_setup(install=True, install_surrogate=True)
     else:
-        # 完整流程
+        # 默认完整流程（不含代理模型）
         setup.run_full_setup(install=True)
     
     return 0 if len(setup.errors) == 0 else 1

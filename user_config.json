@@ -113,25 +113,21 @@
   ],
   "objectives": [
     {
-      "type": "s_db",
-      "name": "S11_max",
+      "name": "S11",
+      "type": "formula",
       "goal": -10.0,
       "target": "minimize",
-      "weight": 2.0,
+      "weight": 2.1,
       "freq_range": [
-        5.6,
-        6.2
+        5.7,
+        6.1
       ],
-      "port": [
-        1,
-        1
-      ],
-      "constraint": "max"
+      "formula": "dB(S(1,1))"
     },
     {
-      "type": "peak_gain",
       "name": "PeakGain",
-      "goal": 6.0,
+      "type": "peak_gain",
+      "goal": 7.5,
       "target": "maximize",
       "weight": 1.0,
       "freq": 5.9
@@ -139,20 +135,28 @@
   ],
   "algorithm": {
     "algorithm": "mopso",
-    "population_size": 3,
-    "n_generations": 3,
+    "population_size": 20,
+    "n_generations": 15,
+    "surrogate_type": "gpflow_svgp",
     "use_surrogate": true,
-    "surrogate_type": "gp",
-    "inertia_weight": 0.4,
-    "c1": 1.5,
-    "c2": 1.5,
-    "surrogate_min_samples": 2,
-    "surrogate_threshold": 0.4
-  },
-  "visualization": {
-    "plot_interval": 7
+    "surrogate_config": {
+      "min_samples": 20,
+      "uncertainty_threshold": 0.1,
+      "model_params": {
+        "min_new_samples_to_train": 5,
+        "n_inducing": 100,
+        "kernel_type": "matern52"
+      }
+    },
+    "stop_when_goal_met": true,
+    "n_solutions_to_stop": 5,
+    "load_evaluations": null
   },
   "run": {
     "output_dir": "C:\\Users\\16438\\Desktop\\HFSS-Python-Optimizer\\optim_results"
+  },
+  "visualization": {
+    "plot_interval": 5,
+    "surrogate_recent_window": 5
   }
 }

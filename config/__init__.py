@@ -10,6 +10,13 @@ from .default_config import (
     get_default_config,
     validate_config,
 )
+from .surrogate_config import (
+    SURROGATE_MODELS,
+    COMMON_PARAMS,
+    get_model_default_config,
+    get_all_default_config,
+    validate_config as validate_surrogate_config,
+)
 
 __all__ = [
     'HFSS_CONFIG',
@@ -19,4 +26,10 @@ __all__ = [
     'RUN_CONFIG',
     'get_default_config',
     'validate_config',
+    # 代理模型配置
+    'SURROGATE_MODELS',
+    'COMMON_PARAMS',
+    'get_model_default_config',
+    'get_all_default_config',
+    'validate_surrogate_config',
 ]
