@@ -3,6 +3,7 @@
 
 支持以下公式语法:
 - S(1,1), S(2,1) 等 - 获取 S 参数复数值
+- Z(1,1), Z(2,1) 等 - 获取 Z 参数复数值
 - dB(S(1,1)) - S 参数的 dB 值 (20*log10(|S|))
 - mag(S(1,1)) - S 参数的幅值
 - phase(S(1,1)) - S 参数的相位 (度)
@@ -20,6 +21,8 @@
 - "min(dB(S(1,1)))"
 - "(dB(S(1,1)) + dB(S(2,1))) / 2"
 - "max(dB(S(1,1))) - min(dB(S(1,1)))"  - 带宽计算
+- "mag(Z(1,1))"
+- "re(Z(2,1))"
 """
 
 import re
@@ -34,6 +37,7 @@ class TokenType(Enum):
     NUMBER = auto()
     IDENTIFIER = auto()  # 函数名或标识符
     S_PARAM = auto()    # S(数字,数字)
+    Z_PARAM = auto()    # Z(数字,数字)
     LPAREN = auto()
     RPAREN = auto()
     PLUS = auto()
@@ -68,6 +72,7 @@ class Tokenizer:
     TOKEN_REGEX = [
         (r'\d+\.?\d*', TokenType.NUMBER),  # 数字
         (r'S\s*\(\s*\d+\s*,\s*\d+\s*\)', TokenType.S_PARAM),  # S(数字,数字) - 必须放在 IDENTIFIER 之前
+        (r'Z\s*\(\s*\d+\s*,\s*\d+\s*\)', TokenType.Z_PARAM),  # Z(数字,数字) - 必须放在 IDENTIFIER 之前
         (r'[a-zA-Z_][a-zA-Z0-9_]*', TokenType.IDENTIFIER),  # 标识符
         (r'\(', TokenType.LPAREN),
         (r'\)', TokenType.RPAREN),
@@ -98,8 +103,8 @@ class Tokenizer:
                 if match:
                     value = match.group()
                     
-                    # S 参数特殊处理：去除空格
-                    if token_type == TokenType.S_PARAM:
+                    # S 参数和 Z 参数特殊处理：去除空格
+                    if token_type in (TokenType.S_PARAM, TokenType.Z_PARAM):
                         value = re.sub(r'\s+', '', value)
                     
                     self.tokens.append(Token(token_type, value, self.pos))
@@ -128,6 +133,13 @@ class NumberNode(ASTNode):
 @dataclass
 class SParamNode(ASTNode):
     """S 参数节点 - S(行, 列)"""
+    row: int
+    col: int
+
+
+@dataclass
+class ZParamNode(ASTNode):
+    """Z 参数节点 - Z(行, 列)"""
     row: int
     col: int
 
@@ -224,6 +236,15 @@ class Parser:
             row, col = int(match.group(1)), int(match.group(2))
             return SParamNode(row, col)
         
+        elif token.type == TokenType.Z_PARAM:
+            self.eat(TokenType.Z_PARAM)
+            # 解析 Z(行,列)
+            match = re.match(r'Z\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)', token.value)
+            if not match:
+                raise FormulaSyntaxError(f"无效的 Z 参数格式: {token.value}")
+            row, col = int(match.group(1)), int(match.group(2))
+            return ZParamNode(row, col)
+        
         elif token.type == TokenType.IDENTIFIER:
             self.eat(TokenType.IDENTIFIER)
             name = token.value
@@ -259,7 +280,7 @@ class FormulaValidator:
     """公式验证器"""
     
     VALID_FUNCTIONS = ['dB', 'mag', 'phase', 're', 'im', 'min', 'max', 'mean', 'abs']
-    VALID_IDENTIFIERS = VALID_FUNCTIONS + ['S']  # S 是 S 参数的关键字
+    VALID_IDENTIFIERS = VALID_FUNCTIONS + ['S', 'Z']  # S 和 Z 是参数的关键字
     
     def __init__(self, formula: str):
         self.formula = formula
@@ -303,11 +324,15 @@ class FormulaValidator:
             if node.row < 1 or node.col < 1:
                 self.errors.append(f"S 参数行号和列号必须 >= 1: S({node.row},{node.col})")
         
+        elif isinstance(node, ZParamNode):
+            if node.row < 1 or node.col < 1:
+                self.errors.append(f"Z 参数行号和列号必须 >= 1: Z({node.row},{node.col})")
+        
         elif isinstance(node, FunctionCallNode):
             # 聚合函数只能有一个参数
             if node.name in ['min', 'max', 'mean']:
-                if not isinstance(node.arg, (SParamNode, FunctionCallNode, BinaryOpNode)):
-                    self.errors.append(f"{node.name}() 函数的参数必须是 S 参数、dB() 表达式或算术表达式")
+                if not isinstance(node.arg, (SParamNode, ZParamNode, FunctionCallNode, BinaryOpNode)):
+                    self.errors.append(f"{node.name}() 函数的参数必须是 S 参数、Z 参数、dB() 表达式或算术表达式")
         
         elif isinstance(node, BinaryOpNode):
             self._check_ast(node.left)
@@ -346,10 +371,11 @@ class FormulaValidator:
 
 
 class SParameterData:
-    """S 参数数据容器"""
+    """S 参数和 Z 参数数据容器"""
     
     def __init__(self):
         self.data: Dict[Tuple[int, int], Dict[str, np.ndarray]] = {}
+        self.z_data: Dict[Tuple[int, int], Dict[str, np.ndarray]] = {}
         self.freq: Optional[np.ndarray] = None
     
     def set_s_param(self, row: int, col: int, real, imag):
@@ -362,6 +388,41 @@ class SParameterData:
             'real': np.array(real),
             'imag': np.array(imag),
         }
+    
+    def set_z_param(self, row: int, col: int, real, imag):
+        """设置 Z 参数数据"""
+        key = (row, col)
+        # 防御性处理：确保 real 和 imag 不是 None
+        if real is None or imag is None:
+            raise ValueError(f"Z({row},{col}) real or imag is None")
+        self.z_data[key] = {
+            'real': np.array(real),
+            'imag': np.array(imag),
+        }
+    
+    def get_complex_z(self, row: int, col: int) -> Optional[np.ndarray]:
+        """获取复数形式的 Z 参数"""
+        key = (row, col)
+        if key not in self.z_data:
+            return None
+        
+        real = self.z_data[key]['real']
+        imag = self.z_data[key]['imag']
+        return real + 1j * imag
+    
+    def get_z_real(self, row: int, col: int) -> Optional[np.ndarray]:
+        """获取 Z 参数的实部"""
+        key = (row, col)
+        if key not in self.z_data:
+            return None
+        return self.z_data[key]['real']
+    
+    def get_z_imag(self, row: int, col: int) -> Optional[np.ndarray]:
+        """获取 Z 参数的虚部"""
+        key = (row, col)
+        if key not in self.z_data:
+            return None
+        return self.z_data[key]['imag']
     
     def set_frequency(self, freq: np.ndarray):
         """设置频率数据"""
@@ -448,6 +509,13 @@ class FormulaEvaluator:
             complex_val = self.s_data.get_complex(node.row, node.col)
             if complex_val is None:
                 raise FormulaEvaluationError(f"S({node.row},{node.col}) 数据不存在")
+            return complex_val
+        
+        elif isinstance(node, ZParamNode):
+            # 返回复数数组（未聚合）
+            complex_val = self.s_data.get_complex_z(node.row, node.col)
+            if complex_val is None:
+                raise FormulaEvaluationError(f"Z({node.row},{node.col}) 数据不存在")
             return complex_val
         
         elif isinstance(node, FunctionCallNode):

@@ -1,8 +1,11 @@
-# HFSS-Optimizer
+# HFSS-Python-Optimizer
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 HFSS 天线自动化优化工具，集成多种优化算法（MOPSO、MOBO、NSGA-II）和代理模型（GPR、RF、GPflow SVGP），通过代理模型技术大幅减少仿真次数。
 
-## 功能特性
+## ✨ 功能特性
 
 - 🖥️ **GUI 界面** - PyQt6 现代化图形配置界面
 - 🚀 **多种算法** - MOPSO、MOBO、NSGA-II、Surrogate-NSGA-II
@@ -10,8 +13,9 @@ HFSS 天线自动化优化工具，集成多种优化算法（MOPSO、MOBO、NSG
 - 📊 **实时可视化** - 优化进度图表自动生成
 - 💾 **历史复用** - 加载历史数据继续优化
 - 🔧 **公式目标** - 支持 `dB(S(1,1)) + max(dB(S(2,1)))` 等复杂表达式
+- 📡 **Z 参数支持** - 新增 Z 参数公式计算，如 `mag(Z(1,1))`、`re(Z(2,1))`
 
-## 快速开始
+## 🚀 快速开始
 
 ### 1. 环境配置
 
@@ -48,6 +52,15 @@ python setup_env.py             # 一键配置
       "weight": 1.0
     },
     {
+      "name": "Z11",
+      "type": "formula",
+      "freq_range": [5.7, 6.1],
+      "formula": "mag(Z(1,1))",
+      "goal": 50.0,
+      "target": "minimize",
+      "weight": 1.0
+    },
+    {
       "name": "PeakGain",
       "type": "peak_gain",
       "freq": 5.9,
@@ -74,7 +87,7 @@ python gui.py          # 传统 GUI
 python run.py          # 命令行模式
 ```
 
-## 算法
+## 📚 算法
 
 | 算法 | 描述 |
 |------|------|
@@ -83,7 +96,7 @@ python run.py          # 命令行模式
 | NSGA-II | 非支配排序遗传算法 |
 | Surrogate-NSGA-II | 代理模型辅助 NSGA-II |
 
-## 代理模型
+## 🤖 代理模型
 
 | 模型 | 特点 |
 |------|------|
@@ -91,7 +104,7 @@ python run.py          # 命令行模式
 | GPR | 高斯过程回归 |
 | RF | 随机森林 |
 
-## 项目结构
+## 📁 项目结构
 
 ```
 HFSS-Optimizer/
@@ -108,7 +121,7 @@ HFSS-Optimizer/
 └── tests/                 # 测试文件
 ```
 
-## 依赖
+## 📝 依赖
 
 - Python 3.8+
 - PyAEDT (HFSS 自动化)
@@ -116,6 +129,6 @@ HFSS-Optimizer/
 - GPflow, TensorFlow (推荐)
 - PyQt6
 
-## 许可
+## 📄 许可
 
 MIT

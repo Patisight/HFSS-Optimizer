@@ -580,7 +580,7 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
 
         form_layout.addWidget(QLabel("类型:"), 0, 2)
         self.obj_type_combo = QComboBox()
-        self.obj_type_combo.addItems(['S参数', 'Gain', 'peakGain', 'Z实部', 'Z虚部'])
+        self.obj_type_combo.addItems(['S参数', 'Z参数', 'Gain', 'peakGain', 'Z实部', 'Z虚部'])
         form_layout.addWidget(self.obj_type_combo, 0, 3)
 
         form_layout.addWidget(QLabel("目标值:"), 0, 4)
@@ -662,20 +662,24 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
 
     def _on_obj_type_changed(self, obj_type: str):
         """当目标类型变化时"""
-        is_s_param = (obj_type == 'S参数')
+        is_s_or_z_param = (obj_type in ['S参数', 'Z参数'])
         self.obj_freq_edit.setVisible(True)  # 频率设置始终显示
-        self.obj_formula_edit.setVisible(is_s_param)
-        self.obj_formula_validate_btn.setVisible(is_s_param)
+        self.obj_formula_edit.setVisible(is_s_or_z_param)
+        self.obj_formula_validate_btn.setVisible(is_s_or_z_param)
         self.obj_formula_error_label.setVisible(False)
         
-        # S参数类型时，强制设置默认公式和频率
-        if is_s_param:
+        # S参数或Z参数类型时，强制设置默认公式和频率
+        if obj_type == 'S参数':
             self.obj_formula_edit.setText('dB(S(1,1))')
+        elif obj_type == 'Z参数':
+            self.obj_formula_edit.setText('mag(Z(1,1))')
+        
+        if is_s_or_z_param:
             if not self.obj_freq_edit.text() or self.obj_freq_edit.text() == '5.1-7.2':
                 self.obj_freq_edit.setText('5.6-6.2')
         
         # 提示文本
-        if is_s_param:
+        if is_s_or_z_param:
             self.obj_freq_edit.setPlaceholderText("频段范围，如 5.6-6.2")
         else:
             self.obj_freq_edit.setPlaceholderText("5.6-6.2 或 5.9")
@@ -709,8 +713,8 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         
         obj_type = self.obj_type_combo.currentText()
         
-        # 如果是S参数类型，验证公式
-        if obj_type == 'S参数':
+        # 如果是S参数或Z参数类型，验证公式
+        if obj_type in ['S参数', 'Z参数']:
             formula = self.obj_formula_edit.text().strip()
             if not formula:
                 self._show_message("警告", "请输入公式", "warning")
@@ -735,8 +739,8 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         self.obj_table.setItem(row, 1, QTableWidgetItem(obj_type))
         # 第2列：频段（对于所有类型都是频率范围）
         self.obj_table.setItem(row, 2, QTableWidgetItem(self.obj_freq_edit.text()))
-        # 第3列：公式（仅S参数类型使用）
-        self.obj_table.setItem(row, 3, QTableWidgetItem(self.obj_formula_edit.text() if obj_type == 'S参数' else ''))
+        # 第3列：公式（仅S参数和Z参数类型使用）
+        self.obj_table.setItem(row, 3, QTableWidgetItem(self.obj_formula_edit.text() if obj_type in ['S参数', 'Z参数'] else ''))
         self.obj_table.setItem(row, 4, QTableWidgetItem(str(self.obj_goal_edit.value())))
         self.obj_table.setItem(row, 5, QTableWidgetItem(self.obj_target_combo.currentText()))
         self.obj_table.setItem(row, 6, QTableWidgetItem(str(self.obj_weight_edit.value())))
@@ -793,7 +797,7 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         self.obj_table.setItem(row, 0, QTableWidgetItem(self.obj_name_edit.text()))
         self.obj_table.setItem(row, 1, QTableWidgetItem(obj_type))
         self.obj_table.setItem(row, 2, QTableWidgetItem(self.obj_freq_edit.text()))
-        self.obj_table.setItem(row, 3, QTableWidgetItem(self.obj_formula_edit.text() if obj_type == 'S参数' else ''))
+        self.obj_table.setItem(row, 3, QTableWidgetItem(self.obj_formula_edit.text() if obj_type in ['S参数', 'Z参数'] else ''))
         self.obj_table.setItem(row, 4, QTableWidgetItem(str(self.obj_goal_edit.value())))
         self.obj_table.setItem(row, 5, QTableWidgetItem(self.obj_target_combo.currentText()))
         self.obj_table.setItem(row, 6, QTableWidgetItem(str(self.obj_weight_edit.value())))
@@ -1330,7 +1334,8 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
 <h3>3. 优化目标</h3>
 <table>
 <tr><th>类型</th><th>说明</th><th>配置示例</th></tr>
-<tr><td>S参数</td><td>S11/S21等回波损耗</td><td>频段: 5.7-6.1, 公式: dB(S(1,1)), 目标: -10</td></tr>
+ <tr><td>S参数</td><td>S11/S21等回波损耗</td><td>频段: 5.7-6.1, 公式: dB(S(1,1)), 目标: -10</td></tr>
+<tr><td>Z参数</td><td>Z11/Z21等阻抗参数</td><td>频段: 5.7-6.1, 公式: mag(Z(1,1)), 目标: 50</td></tr>
 <tr><td>Gain</td><td>增益</td><td>频段: 5.7-6.1, 目标: 5</td></tr>
 <tr><td>peakGain</td><td>峰值增益</td><td>频率: 5.9, 目标: 7.5</td></tr>
 <tr><td>阻抗</td><td>实部/虚部</td><td>频率: 5.9, 目标: 50</td></tr>
@@ -1900,6 +1905,7 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         # GUI类型到内部类型的映射
         type_to_internal = {
             'S参数': 'formula',
+            'Z参数': 'formula',
             'Gain': 'gain',
             'peakGain': 'peak_gain',
             'Z实部': 'z_real',

@@ -150,8 +150,8 @@ class ObjectiveEvaluator:
         name = obj.get('name', obj_type)
         
         try:
-            if obj_type == 'formula':
-                # 新的公式类型目标
+            if obj_type in ['formula', 'S参数', 'Z参数']:
+                # 公式类型目标，包括 S参数 和 Z参数
                 value, actual = self._evaluate_formula(obj)
             elif obj_type in ['s_mag', 's_phase', 's_db']:
                 value, actual = self._evaluate_s_parameter(obj)
@@ -264,64 +264,100 @@ class ObjectiveEvaluator:
     
     def _get_formula_s_data(self, obj: Dict) -> Optional[FormulaSData]:
         """
-        获取用于公式计算的 S 参数数据
+        获取用于公式计算的 S 参数和 Z 参数数据
         
         Returns:
             FormulaSData 对象，或 None（如果获取失败）
         """
-        # 从 HFSS 获取所有需要的 S 参数数据
+        # 从 HFSS 获取所有需要的 S 参数和 Z 参数数据
         # 首先确定需要哪些端口
         formula = obj.get('formula', '')
         if not formula:
             print("[WARN] _get_formula_s_data: no formula in obj")
             return None
         
-        # 解析公式找出需要的 S 参数
+        # 解析公式找出需要的 S 参数和 Z 参数
         import re
         s_params = re.findall(r'S\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)', formula)
-        if not s_params:
-            print(f"[WARN] _get_formula_s_data: no S params found in formula '{formula}'")
+        z_params = re.findall(r'Z\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)', formula)
+        
+        if not s_params and not z_params:
+            print(f"[WARN] _get_formula_s_data: no S or Z params found in formula '{formula}'")
             return None
         
         # 收集所有需要的端口
-        ports = []
+        s_ports = []
         for row, col in s_params:
             port = (int(row), int(col))
-            if port not in ports:
-                ports.append(port)
+            if port not in s_ports:
+                s_ports.append(port)
+        
+        z_ports = []
+        for row, col in z_params:
+            port = (int(row), int(col))
+            if port not in z_ports:
+                z_ports.append(port)
         
         # 获取 S 参数数据
-        s_data = self.hfss.get_s_parameters(ports)
-        if s_data is None:
-            print("[WARN] _get_formula_s_data: get_s_parameters returned None")
-            return None
-        if s_data.get('freq') is None:
-            print("[WARN] _get_formula_s_data: freq is None")
+        s_data = None
+        if s_ports:
+            s_data = self.hfss.get_s_parameters(s_ports)
+        
+        # 获取 Z 参数数据
+        z_data = None
+        if z_ports:
+            z_data = self.hfss.get_z_parameters(z_ports)
+        
+        # 确定频率数据
+        freq = None
+        if s_data and s_data.get('freq') is not None:
+            freq = s_data['freq']
+        elif z_data and z_data.get('freq') is not None:
+            freq = z_data['freq']
+        
+        if freq is None:
+            print("[WARN] _get_formula_s_data: freq is None from both S and Z data")
             return None
         
         # 创建 FormulaSData 对象
         formula_s_data = FormulaSData()
         
         # 设置频率
-        formula_s_data.set_frequency(np.array(s_data['freq']))
+        formula_s_data.set_frequency(np.array(freq))
         
         # 设置每个 S 参数
-        for port_key, port_data in s_data['ports'].items():
-            row, col = port_key
-            real_data = port_data.get('real')
-            imag_data = port_data.get('imag')
-            if real_data is None or imag_data is None:
-                print(f"[WARN] _get_formula_s_data: S({row},{col}) real or imag is None")
-                continue
-            try:
-                formula_s_data.set_s_param(row, col, real_data, imag_data)
-            except ValueError as e:
-                print(f"[WARN] _get_formula_s_data: set_s_param failed for S({row},{col}): {e}")
-                continue
+        if s_data and 'ports' in s_data:
+            for port_key, port_data in s_data['ports'].items():
+                row, col = port_key
+                real_data = port_data.get('real')
+                imag_data = port_data.get('imag')
+                if real_data is None or imag_data is None:
+                    print(f"[WARN] _get_formula_s_data: S({row},{col}) real or imag is None")
+                    continue
+                try:
+                    formula_s_data.set_s_param(row, col, real_data, imag_data)
+                except ValueError as e:
+                    print(f"[WARN] _get_formula_s_data: set_s_param failed for S({row},{col}): {e}")
+                    continue
         
-        # 检查是否成功添加了任何 S 参数
-        if not formula_s_data.data:
-            print("[WARN] _get_formula_s_data: no S parameters were set")
+        # 设置每个 Z 参数
+        if z_data and 'ports' in z_data:
+            for port_key, port_data in z_data['ports'].items():
+                row, col = port_key
+                real_data = port_data.get('real')
+                imag_data = port_data.get('imag')
+                if real_data is None or imag_data is None:
+                    print(f"[WARN] _get_formula_s_data: Z({row},{col}) real or imag is None")
+                    continue
+                try:
+                    formula_s_data.set_z_param(row, col, real_data, imag_data)
+                except ValueError as e:
+                    print(f"[WARN] _get_formula_s_data: set_z_param failed for Z({row},{col}): {e}")
+                    continue
+        
+        # 检查是否成功添加了任何 S 参数或 Z 参数
+        if not formula_s_data.data and not formula_s_data.z_data:
+            print("[WARN] _get_formula_s_data: no S or Z parameters were set")
             return None
         
         return formula_s_data
@@ -389,8 +425,20 @@ class ObjectiveEvaluator:
                 imag = imag[mask]
             s_data.set_s_param(row, col, real, imag)
         
-        # 检查是否成功设置了 S 参数
-        if not s_data.data:
+        # 复制每个 Z 参数的筛选后数据
+        for (row, col), port_data in full_s_data.z_data.items():
+            real = port_data.get('real')
+            imag = port_data.get('imag')
+            if real is None or imag is None:
+                print(f"[WARN] _evaluate_formula: Z({row},{col}) real or imag is None")
+                continue
+            if len(real) == len(mask):
+                real = real[mask]
+                imag = imag[mask]
+            s_data.set_z_param(row, col, real, imag)
+        
+        # 检查是否成功设置了 S 参数或 Z 参数
+        if not s_data.data and not s_data.z_data:
             print("[WARN] _evaluate_formula: no S parameters were set after filtering")
             return 1000.0, 1000.0
         
@@ -477,12 +525,19 @@ class ObjectiveEvaluator:
     
     def _evaluate_z_real(self, obj: Dict) -> Tuple[float, float]:
         """评估阻抗实部"""
-        z_data = self.hfss.get_z_parameters()
+        port = obj.get('port', (1, 1))
+        if isinstance(port, list):
+            port = tuple(port)
+        
+        z_data = self.hfss.get_z_parameters([port])
         if z_data is None:
             return 1000.0, 1000.0
         
         freq = z_data['freq']
-        z_real = z_data['z_real']
+        if port not in z_data['ports']:
+            return 1000.0, 1000.0
+        
+        z_real = z_data['ports'][port]['real']
         
         target_freq = obj.get('freq', 5.9)
         idx = np.argmin(np.abs(freq - target_freq))
@@ -499,12 +554,19 @@ class ObjectiveEvaluator:
     
     def _evaluate_z_imag(self, obj: Dict) -> Tuple[float, float]:
         """评估阻抗虚部"""
-        z_data = self.hfss.get_z_parameters()
+        port = obj.get('port', (1, 1))
+        if isinstance(port, list):
+            port = tuple(port)
+        
+        z_data = self.hfss.get_z_parameters([port])
         if z_data is None:
             return 1000.0, 1000.0
         
         freq = z_data['freq']
-        z_imag = z_data['z_imag']
+        if port not in z_data['ports']:
+            return 1000.0, 1000.0
+        
+        z_imag = z_data['ports'][port]['imag']
         
         target_freq = obj.get('freq', 5.9)
         idx = np.argmin(np.abs(freq - target_freq))

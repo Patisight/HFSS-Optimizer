@@ -1014,60 +1014,115 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
             print(f"[DEBUG] Script gain method: {e}")
             return None
     
-    def get_z_parameters(self) -> Optional[Dict]:
-        """获取 Z 参数"""
+    def get_z_parameters(self, ports: List[Tuple[int, int]] = None) -> Optional[Dict]:
+        """
+        获取 Z 参数数据
+        
+        Args:
+            ports: 端口列表，如 [(1,1), (2,1)]，默认获取 Z11
+            
+        Returns:
+            包含频率和 Z 参数数据的字典
+        """
         if not self._connected:
             return None
         
-        if not self.ensure_connection():
-            print("[WARN] Cannot reconnect to HFSS for Z-params")
-            return None
+        if ports is None:
+            ports = [(1, 1)]
         
-        try:
-            sweep_path = f"{self.setup_name} : {self.sweep_name}"
-            
-            report = self.hfss.post.reports_by_category.standard(setup=sweep_path)
-            report.domain = "Sweep"
-            report.expressions = ["Z(1,1)"]
-            report.create()
-            
-            sol_data = report.get_solution_data()
-            
-            # 获取数据后立即删除报告
+        for attempt in range(3):
             try:
-                report.delete()
-            except Exception:
-                pass
-            
-            if sol_data is None:
-                return None
-            
-            z_real = sol_data.data_real("Z(1,1)")
-            z_imag = sol_data.data_imag("Z(1,1)")
-            
-            if z_real is None:
-                return None
-            
-            z_real = np.array(z_real).flatten()
-            z_imag = np.array(z_imag).flatten()
-            
-            # 使用 Sweep 的实际频率，而非硬编码
-            try:
-                freq = np.array(sol_data.primary_sweep_values).flatten()
-                if np.max(freq) > 100:  # Hz -> GHz
-                    freq = freq / 1e9
-            except Exception:
-                freq = np.linspace(4, 8, len(z_real))
-            
-            return {
-                'freq': freq,
-                'z_real': z_real,
-                'z_imag': z_imag,
-            }
-            
-        except Exception as e:
-            print(f"[WARN] Get Z-params: {e}")
-            return None
+                if not self.ensure_connection():
+                    print(f"[WARN] Cannot reconnect to HFSS for Z-params (attempt {attempt+1}/3)")
+                    self._connected = False
+                    if attempt < 2:
+                        time.sleep(3)
+                    continue
+                
+                print("[INFO] Getting Z-parameters...")
+                
+                sweep_path = f"{self.setup_name} : {self.sweep_name}"
+                
+                expressions = []
+                for (i, j) in ports:
+                    expressions.append(f"Z({i},{j})")
+                
+                report = self.hfss.post.reports_by_category.standard(setup=sweep_path)
+                report.domain = "Sweep"
+                report.expressions = expressions
+                report.create()
+                
+                sol_data = report.get_solution_data()
+                
+                try:
+                    report.delete()
+                except Exception:
+                    pass
+
+                if sol_data is None or not hasattr(sol_data, 'data_real'):
+                    print("[WARN] No solution data")
+                    return None
+                
+                try:
+                    freq = sol_data.primary_sweep_values
+                    if freq is not None:
+                        freq = np.array(freq).flatten()
+                        if np.max(freq) > 100:
+                            freq = freq / 1e9
+                    else:
+                        freq = np.linspace(4, 8, 100)
+                except Exception:
+                    freq = np.linspace(4, 8, 100)
+
+                result = {'freq': freq, 'ports': {}}
+                
+                for (i, j) in ports:
+                    z_real = sol_data.data_real(f"Z({i},{j})")
+                    z_imag = sol_data.data_imag(f"Z({i},{j})")
+                    
+                    if z_real is None:
+                        continue
+                    
+                    z_real = np.array(z_real).flatten()
+                    z_imag = np.array(z_imag).flatten()
+                    
+                    result['ports'][(i, j)] = {
+                        'real': z_real,
+                        'imag': z_imag,
+                    }
+                
+                print(f"[OK] Z-params: {len(freq)} freq points, {freq.min():.2f}-{freq.max():.2f} GHz")
+                return result
+                
+            except Exception as e:
+                err_str = str(e).lower()
+                print(f"[WARN] Get Z-params failed (attempt {attempt+1}/3): {e}")
+                
+                is_connection_error = any(x in err_str for x in [
+                    'nonetype', 'bool', 'object is not iterable',
+                    'hfss terminal', 'argument of type', 'attribute',
+                    'none', 'disconnected', 'closed', 'failed'
+                ])
+                
+                if attempt >= 2:
+                    # 所有重试都失败了
+                    if is_connection_error:
+                        self._connected = False
+                    raise RuntimeError(f"get_z-params failed after 3 attempts: {e}")
+                
+                # 不是最后一次重试，尝试重连后继续
+                if is_connection_error:
+                    self._connected = False
+                    print(f"[INFO] Attempting to reconnect...")
+                    if self._reconnect():
+                        print(f"[INFO] Reconnected, retrying get_z_parameters...")
+                        continue
+                    time.sleep(5)
+                
+                # 继续循环重试
+                continue
+        
+        return None
     
     def clear_solution_cache(self):
         """清除HFSS解决方案缓存（报告数据、场数据等）"""
