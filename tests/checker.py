@@ -252,9 +252,14 @@ class ProjectChecker:
                 self.results['errors'].append(f"变量 '{name}' 边界设置错误: {bounds}")
                 continue
             
-            if bounds[0] >= bounds[1]:
-                self.results['errors'].append(f"变量 '{name}' 边界无效: min={bounds[0]}, max={bounds[1]}")
-                continue
+            # 如果边界是公式（字符串），跳过比较
+            if isinstance(bounds[0], (int, float)) and isinstance(bounds[1], (int, float)):
+                if bounds[0] >= bounds[1]:
+                    self.results['errors'].append(f"变量 '{name}' 边界无效: min={bounds[0]}, max={bounds[1]}")
+                    continue
+            else:
+                # 公式边界，记录信息
+                self.results['details'][f'{name}_formula_bounds'] = f"{bounds[0]} ~ {bounds[1]}"
             
             # 检查变量是否在 HFSS 中定义
             if hfss_vars and name not in hfss_vars:
@@ -512,48 +517,82 @@ oDesign.ValidateDesign
         print("\n[边界测试] 测试变量边界值...")
         print("  使用 HFSS Validate 功能验证...")
         
+        from core.constrained_params import ConstrainedParameterManager
+        param_mgr = ConstrainedParameterManager(variables)
+        
         failed_bounds = []
         passed_count = 0
         
         for var in variables:
             name = var.get('name', '')
             bounds = var.get('bounds', (0, 1))
-            unit = var.get('unit', 'mm')
             
             var_errors = []
             
-            # 测试最小值
-            try:
-                self.hfss.hfss[name] = f"{bounds[0]}{unit}"
-                time.sleep(0.5)
-                
-                # 使用 Validate 验证
-                is_valid, errors = self._validate_design()
-                if not is_valid:
-                    var_errors.append(f"min={bounds[0]}: 验证失败")
-                    print(f"  {name}[min={bounds[0]}]: 验证失败 ✗")
-                else:
-                    print(f"  {name}[min={bounds[0]}]: 通过 ✓")
-                
-            except Exception as e:
-                var_errors.append(f"min={bounds[0]}: 设置失败 {str(e)[:30]}")
-                print(f"  {name}[min={bounds[0]}]: 设置失败 ✗")
+            # 测试最小值边界
+            print(f"\n  测试 {name} 最小值...")
+            feasible, actual_value, msg = param_mgr.test_boundary_feasibility(name, 'min')
             
-            # 测试最大值
-            try:
-                self.hfss.hfss[name] = f"{bounds[1]}{unit}"
-                time.sleep(0.5)
+            if feasible or actual_value > 0:
+                # 批量设置所有变量（避免中间报错）
+                all_values = param_mgr.get_all_values()
+                all_valid = True
+                for vname, val in all_values.items():
+                    try:
+                        vunit = next((v.get('unit', 'mm') for v in variables if v['name'] == vname), 'mm')
+                        self.hfss.hfss[vname] = f"{val:.4f}{vunit}"
+                    except Exception as e:
+                        var_errors.append(f"设置 {vname}={val:.4f} 失败: {str(e)[:30]}")
+                        all_valid = False
                 
-                is_valid, errors = self._validate_design()
-                if not is_valid:
-                    var_errors.append(f"max={bounds[1]}: 验证失败")
-                    print(f"  {name}[max={bounds[1]}]: 验证失败 ✗")
-                else:
-                    print(f"  {name}[max={bounds[1]}]: 通过 ✓")
+                if all_valid:
+                    time.sleep(0.5)
+                    is_valid, hfss_errors = self._validate_design()
+                    if not is_valid:
+                        var_errors.append(f"min={actual_value:.4f}: HFSS验证失败")
+                        print(f"    {name}[min={actual_value:.4f}]: HFSS验证失败 ✗")
+                    else:
+                        print(f"    {name}[min={actual_value:.4f}]: 通过 ✓")
+                        if not feasible:
+                            print(f"      (警告: 无法达到理论边界，实际最接近值={actual_value:.4f})")
+            else:
+                var_errors.append(f"min边界约束冲突: {msg}")
+                print(f"    {name}[min]: {msg} ✗")
+            
+            # 重置参数
+            param_mgr._initialize_values()
+            
+            # 测试最大值边界
+            print(f"  测试 {name} 最大值...")
+            feasible, actual_value, msg = param_mgr.test_boundary_feasibility(name, 'max')
+            
+            if feasible or actual_value > 0:
+                all_values = param_mgr.get_all_values()
+                all_valid = True
+                for vname, val in all_values.items():
+                    try:
+                        vunit = next((v.get('unit', 'mm') for v in variables if v['name'] == vname), 'mm')
+                        self.hfss.hfss[vname] = f"{val:.4f}{vunit}"
+                    except Exception as e:
+                        var_errors.append(f"设置 {vname}={val:.4f} 失败: {str(e)[:30]}")
+                        all_valid = False
                 
-            except Exception as e:
-                var_errors.append(f"max={bounds[1]}: 设置失败 {str(e)[:30]}")
-                print(f"  {name}[max={bounds[1]}]: 设置失败 ✗")
+                if all_valid:
+                    time.sleep(0.5)
+                    is_valid, hfss_errors = self._validate_design()
+                    if not is_valid:
+                        var_errors.append(f"max={actual_value:.4f}: HFSS验证失败")
+                        print(f"    {name}[max={actual_value:.4f}]: HFSS验证失败 ✗")
+                    else:
+                        print(f"    {name}[max={actual_value:.4f}]: 通过 ✓")
+                        if not feasible:
+                            print(f"      (警告: 无法达到理论边界，实际最接近值={actual_value:.4f})")
+            else:
+                var_errors.append(f"max边界约束冲突: {msg}")
+                print(f"    {name}[max]: {msg} ✗")
+            
+            # 重置参数
+            param_mgr._initialize_values()
             
             if var_errors:
                 failed_bounds.append({
@@ -592,20 +631,21 @@ oDesign.ValidateDesign
         print(f"\n[随机采样] 测试 {n_samples} 组随机变量组合...")
         print("  使用 HFSS Validate 功能验证...")
         
+        from core.constrained_params import ConstrainedParameterManager
+        param_mgr = ConstrainedParameterManager(variables)
+        
         failed_samples = []
         success_count = 0
         
         for i in range(n_samples):
-            # 生成随机参数
+            # 生成满足约束的随机参数
+            params_numeric = param_mgr.generate_random_params()
+            
+            # 转换为HFSS格式
             params = {}
             param_display = {}
-            for var in variables:
-                name = var.get('name', '')
-                bounds = var.get('bounds', (0, 1))
-                unit = var.get('unit', 'mm')
-                
-                # 随机值（在边界内）
-                value = random.uniform(bounds[0], bounds[1])
+            for name, value in params_numeric.items():
+                unit = next((v.get('unit', 'mm') for v in variables if v['name'] == name), 'mm')
                 params[name] = f"{value:.4f}{unit}"
                 param_display[name] = f"{value:.2f}{unit}"
             

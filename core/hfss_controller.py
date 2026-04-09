@@ -30,79 +30,223 @@ class HFSSController:
         
         self.hfss = None
         self._connected = False
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 3
+        self._reconnect_delay = 10  # 秒
     
-    def connect(self) -> bool:
-        """连接到 HFSS"""
-        try:
-            import pyaedt
-            
-            print(f"[INFO] Connecting to HFSS...")
-            print(f"  Project: {self.project_path}")
-            print(f"  Design: {self.design_name}")
-            
-            # 安全删除锁文件（仅在无 HFSS 进程运行时）
-            if not self._is_hfss_running():
-                lock_patterns = [
-                    self.project_path.replace('.aedt', '.aedt.lock'),
-                    self.project_path.replace('.aedt', '.aedtresults') + '\\.lock',
-                    os.path.join(os.path.dirname(self.project_path), '.lock'),
-                ]
-                for lock_file in lock_patterns:
-                    if os.path.exists(lock_file):
-                        try:
-                            os.remove(lock_file)
-                            print(f"  [OK] Removed stale lock: {lock_file}")
-                        except Exception as e:
-                            print(f"  [WARN] Cannot remove lock: {e}")
-            else:
-                print("[INFO] HFSS process detected, skipping lock cleanup")
-            
-            # 尝试连接到已有的 HFSS 实例
+    def connect(self, force_new: bool = False) -> bool:
+        """
+        连接到 HFSS
+        
+        Args:
+            force_new: 是否强制启动新的 HFSS 实例
+        """
+        import pyaedt
+        
+        print(f"[INFO] Connecting to HFSS...")
+        print(f"  Project: {self.project_path}")
+        print(f"  Design: {self.design_name}")
+        
+        # 检查项目文件是否存在
+        if not os.path.exists(self.project_path):
+            print(f"[ERROR] Project file not found: {self.project_path}")
+            return False
+        
+        # 如果强制启动新实例，先关闭现有连接
+        if force_new:
+            print("[INFO] Force new HFSS instance requested...")
             try:
-                # 先尝试连接现有桌面
-                # 不指定 solution_type，保持项目原有设置
-                self.hfss = pyaedt.Hfss(
-                    project=self.project_path,
-                    design=self.design_name,
-                    version=None,
-                    new_desktop=False,  # 先尝试复用现有桌面
-                    close_on_exit=False,
-                )
-                print("[OK] Connected to existing HFSS instance")
+                desktop = pyaedt.Desktop()
+                desktop.close_desktop()
             except Exception:
-                # 如果失败，启动新的 HFSS
-                print("[INFO] Starting new HFSS instance...")
-                self.hfss = pyaedt.Hfss(
-                    project=self.project_path,
-                    design=self.design_name,
-                    version=None,
-                    new_desktop=True,
-                    close_on_exit=True,
-                )
-            
-            if self.hfss:
+                pass
+            time.sleep(2)
+        
+        # 安全删除锁文件（仅在无 HFSS 进程运行时）
+        hfss_running = self._is_hfss_running()
+        if not hfss_running or force_new:
+            print("[INFO] No HFSS process detected, checking for stale locks...")
+            lock_patterns = [
+                self.project_path.replace('.aedt', '.aedt.lock'),
+                self.project_path.replace('.aedt', '.aedtresults') + '\\.lock',
+                os.path.join(os.path.dirname(self.project_path), '.lock'),
+            ]
+            for lock_file in lock_patterns:
+                if os.path.exists(lock_file):
+                    try:
+                        os.remove(lock_file)
+                        print(f"  [OK] Removed stale lock: {lock_file}")
+                    except Exception as e:
+                        print(f"  [WARN] Cannot remove lock: {e}")
+        else:
+            print("[INFO] HFSS process detected, will try to connect to existing instance")
+        
+        # 尝试连接到 HFSS
+        connection_errors = []
+        
+        for attempt in range(3):
+            try:
+                if force_new or attempt > 0:
+                    # 强制启动新实例或重试时启动新实例
+                    print(f"[INFO] Starting new HFSS instance (attempt {attempt+1})...")
+                    self.hfss = pyaedt.Hfss(
+                        project=self.project_path,
+                        design=self.design_name,
+                        version=None,
+                        new_desktop=True,
+                        close_on_exit=True,
+                    )
+                else:
+                    # 先尝试连接现有桌面
+                    self.hfss = pyaedt.Hfss(
+                        project=self.project_path,
+                        design=self.design_name,
+                        version=None,
+                        new_desktop=False,
+                        close_on_exit=False,
+                    )
+                    print("[OK] Connected to existing HFSS instance")
+                
+                # 验证连接
+                _ = self.hfss.project_name
+                _ = self.hfss.design_name
+                
                 self._connected = True
                 print("[OK] Connected to HFSS")
                 return True
-            return False
-            
-        except Exception as e:
-            print(f"[ERROR] Connection failed: {e}")
-            return False
+                
+            except Exception as e:
+                err_msg = str(e)
+                connection_errors.append(err_msg)
+                print(f"[WARN] Connection attempt {attempt+1}/3 failed: {err_msg}")
+                
+                # 检查是否是项目文件错误
+                if '有错误' in err_msg or 'error' in err_msg.lower():
+                    print("[ERROR] Project file appears to have errors")
+                    print("[INFO] Try opening the project in HFSS manually to repair it")
+                
+                if attempt < 2:
+                    print(f"[INFO] Waiting 5s before retry...")
+                    time.sleep(5)
+        
+        # 所有尝试都失败了
+        print(f"[ERROR] All connection methods failed:")
+        for i, err in enumerate(connection_errors):
+            print(f"  Attempt {i+1}: {err}")
+        return False
     
     @staticmethod
     def _is_hfss_running() -> bool:
         """检查是否有 HFSS 进程正在运行"""
         try:
             import subprocess
-            result = subprocess.run(
-                ['tasklist', '/FI', 'IMAGENAME eq AnsysCOMEngine.exe'],
-                capture_output=True, text=True, timeout=5
-            )
-            return 'AnsysCOMEngine.exe' in result.stdout
+            process_names = ['AnsysCOMEngine.exe', 'ansysedt.exe', 'Hfss.exe']
+            for proc_name in process_names:
+                result = subprocess.run(
+                    ['tasklist', '/FI', f'IMAGENAME eq {proc_name}'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if proc_name in result.stdout:
+                    print(f"[INFO] Found HFSS process: {proc_name}")
+                    return True
+            return False
         except Exception:
-            # 无法判断时保守返回 True，不删锁文件
             return True
+    
+    def _check_connection(self) -> bool:
+        """
+        检查连接是否还活着
+        
+        Returns:
+            连接是否正常
+        """
+        if not self._connected or not self.hfss:
+            return False
+        
+        try:
+            # 尝试访问 HFSS 对象的属性来判断连接是否断开
+            _ = self.hfss.project_name
+            return True
+        except Exception as e:
+            print(f"[WARN] HFSS connection lost: {e}")
+            return False
+    
+    def _reconnect(self) -> bool:
+        """
+        尝试重新连接到 HFSS（无限重试，直到成功或用户终止）
+        
+        Returns:
+            是否重连成功
+        """
+        reconnect_count = 0
+        while True:
+            reconnect_count += 1
+            print(f"[INFO] Attempting to reconnect to HFSS (attempt {reconnect_count})...")
+            
+            # 强制关闭旧连接
+            self._force_close()
+            
+            # 等待让 HFSS 准备好
+            wait_time = min(10 + reconnect_count * 2, 30)  # 逐渐增加等待时间，最多30秒
+            print(f"[INFO] Waiting {wait_time}s before reconnect...")
+            time.sleep(wait_time)
+            
+            # 强制启动新实例重新连接
+            success = self.connect(force_new=True)
+            if success:
+                print(f"[OK] Reconnected to HFSS successfully on attempt {reconnect_count}")
+                self._reconnect_attempts = 0  # 重置重连计数
+                return True
+            
+            print(f"[WARN] Reconnection failed, will retry...")
+    
+    def _force_close(self):
+        """强制关闭 HFSS 连接"""
+        print(f"[INFO] Force closing HFSS connection...")
+        self._connected = False
+        self.hfss = None
+        
+        # 尝试关闭桌面
+        try:
+            import pyaedt
+            # 尝试获取桌面并关闭
+            desktop = pyaedt.Desktop()
+            desktop.close_desktop()
+        except Exception:
+            pass
+        
+        # 清理锁文件
+        try:
+            if os.path.exists(self.project_path):
+                lock_patterns = [
+                    self.project_path.replace('.aedt', '.aedt.lock'),
+                    self.project_path.replace('.aedt', '.aedtresults') + '\\.lock',
+                ]
+                for lock_file in lock_patterns:
+                    if os.path.exists(lock_file):
+                        try:
+                            os.remove(lock_file)
+                            print(f"  [OK] Removed lock: {lock_file}")
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+    
+    def ensure_connection(self) -> bool:
+        """
+        确保连接正常，必要时重连（无限重试直到成功）
+        
+        Returns:
+            连接是否正常
+        """
+        while not self._check_connection():
+            print("[WARN] HFSS connection lost, will attempt to reconnect...")
+            if not self._reconnect():
+                print("[WARN] Reconnection failed, will retry in 10s...")
+                time.sleep(10)
+                continue
+            return True
+        return True
 
     def close(self):
         """关闭 HFSS 连接"""
@@ -128,18 +272,48 @@ class HFSSController:
         if not self._connected:
             raise RuntimeError("Not connected to HFSS")
         
-        try:
-            # 格式化值
-            if unit in ["nH", "pF", "GHz"]:
-                expr = f"{value:.4f}{unit}"
-            else:
-                expr = f"{value:.3f}{unit}"
-            
-            self.hfss.variable_manager.set_variable(name, expression=expr)
-            print(f"[OK] {name} = {value:.3f}{unit}")
-            
-        except Exception as e:
-            print(f"[WARN] Set variable {name}: {e}")
+        # 格式化值
+        if unit in ["nH", "pF", "GHz"]:
+            expr = f"{value:.4f}{unit}"
+        else:
+            expr = f"{value:.3f}{unit}"
+        
+        # 设置变量，带重连和重试
+        last_error = None
+        for attempt in range(3):
+            try:
+                # 每次尝试前确保连接
+                if not self.ensure_connection():
+                    raise RuntimeError("Cannot reconnect to HFSS")
+                
+                self.hfss.variable_manager.set_variable(name, expression=expr)
+                print(f"[OK] {name} = {value:.3f}{unit}")
+                return
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                
+                # 检查是否是连接相关错误
+                is_connection_error = any(x in err_str for x in [
+                    'nonetype', 'bool', 'object is not iterable', 
+                    'attribute', 'none', 'disconnected', 'closed'
+                ])
+                
+                if is_connection_error:
+                    print(f"[WARN] HFSS connection error on set_variable ({attempt+1}/3): {e}")
+                    # 标记需要重连
+                    self._connected = False
+                    if attempt < 2:
+                        print(f"[INFO] Attempting to reconnect...")
+                        if self._reconnect():
+                            continue
+                        time.sleep(3)
+                else:
+                    print(f"[WARN] Set variable {name} ({attempt+1}/3): {e}")
+                    if attempt < 2:
+                        time.sleep(1)
+        
+        raise RuntimeError(f"Failed to set variable {name} after 3 attempts: {last_error}")
     
     def analyze(self, force: bool = False) -> bool:
         """
@@ -154,28 +328,89 @@ class HFSSController:
         if not self._connected:
             return False
         
+        last_error = None
+        for attempt in range(3):
+            try:
+                # 确保连接正常
+                if not self.ensure_connection():
+                    print(f"[ERROR] Cannot reconnect to HFSS (attempt {attempt+1}/3)")
+                    self._connected = False
+                    if attempt < 2:
+                        time.sleep(3)
+                        continue
+                    return False
+                
+                self._ensure_far_field_setup()
+                
+                if force:
+                    print(f"[INFO] Force re-analyzing {self.setup_name}...")
+                    try:
+                        self.hfss.odesign.DeleteSetupData(self.setup_name)
+                    except Exception:
+                        pass
+                else:
+                    print(f"[INFO] Analyzing {self.setup_name}...")
+                
+                t0 = time.time()
+                self.hfss.analyze_setup(self.setup_name)
+                elapsed = time.time() - t0
+                
+                # 验证分析是否真正执行（HFSS崩溃时可能0秒完成）
+                if elapsed < 1.0:
+                    print(f"[WARN] Analysis suspiciously fast ({elapsed:.1f}s), may have failed silently")
+                    # 尝试通过检查项目状态来验证
+                    if not self._verify_analysis_ran():
+                        print(f"[WARN] Analysis verification failed, retrying...")
+                        self._connected = False
+                        if attempt < 2:
+                            time.sleep(3)
+                            continue
+                        return False
+                
+                print(f"[OK] Analysis done ({elapsed:.1f}s)")
+                return True
+                
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                
+                # 检查是否是连接相关错误
+                is_connection_error = any(x in err_str for x in [
+                    'nonetype', 'bool', 'object is not iterable',
+                    'argument of type', 'attribute', 'none', 
+                    'disconnected', 'closed', 'failed'
+                ])
+                
+                if is_connection_error:
+                    print(f"[WARN] HFSS connection error on analyze ({attempt+1}/3): {e}")
+                    self._connected = False
+                    if attempt < 2:
+                        print(f"[INFO] Attempting to reconnect...")
+                        if self._reconnect():
+                            print(f"[INFO] Reconnected, retrying analysis...")
+                            continue
+                        time.sleep(5)
+                else:
+                    print(f"[ERROR] Analysis failed ({attempt+1}/3): {e}")
+                    if attempt < 2:
+                        time.sleep(2)
+        
+        print(f"[ERROR] Analysis failed after 3 attempts: {last_error}")
+        return False
+    
+    def _verify_analysis_ran(self) -> bool:
+        """
+        验证分析是否真正执行
+        
+        Returns:
+            是否验证通过
+        """
         try:
-            # 确保远场设置已关联到 Setup
-            self._ensure_far_field_setup()
-            
-            if force:
-                print(f"[INFO] Force re-analyzing {self.setup_name}...")
-                try:
-                    self.hfss.odesign.DeleteSetupData(self.setup_name)
-                except Exception:
-                    pass
-            else:
-                print(f"[INFO] Analyzing {self.setup_name}...")
-            
-            t0 = time.time()
-            self.hfss.analyze_setup(self.setup_name)
-            elapsed = time.time() - t0
-            
-            print(f"[OK] Analysis done ({elapsed:.1f}s)")
+            # 尝试访问HFSS对象的基本属性来验证连接状态
+            _ = self.hfss.project_name
+            _ = self.hfss.design_name
             return True
-            
-        except Exception as e:
-            print(f"[ERROR] Analysis failed: {e}")
+        except Exception:
             return False
     
     def check_far_field_setup(self) -> Dict:
@@ -520,89 +755,111 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
         if ports is None:
             ports = [(1, 1)]
         
-        try:
-            print("[INFO] Getting S-parameters...")
-            
-            sweep_path = f"{self.setup_name} : {self.sweep_name}"
-            
-            # 构建表达式
-            expressions = []
-            for (i, j) in ports:
-                expressions.extend([f"dB(S({i},{j}))", f"S({i},{j})"])
-            
-            report = self.hfss.post.reports_by_category.standard(setup=sweep_path)
-            report.domain = "Sweep"
-            report.expressions = expressions
-            report.create()
-            
-            sol_data = report.get_solution_data()
-            
-            # 获取数据后立即删除报告，避免累积
+        for attempt in range(3):
             try:
-                report.delete()
-            except Exception:
-                pass
-
-            if sol_data is None or not hasattr(sol_data, 'data_real'):
-                print("[WARN] No solution data")
-                return None
-            
-            # 获取频率
-            try:
-                freq = sol_data.primary_sweep_values
-                if freq is not None:
-                    freq = np.array(freq).flatten()
-                    if np.max(freq) > 100:  # Hz -> GHz
-                        freq = freq / 1e9
-                else:
-                    freq = np.linspace(4, 8, 100)
-            except Exception:
-                freq = np.linspace(4, 8, 100)
-
-            result = {
-                'freq': freq,
-                'ports': {}
-            }
-            
-            # 解析每个端口
-            for (i, j) in ports:
-                s_db = sol_data.data_real(f"dB(S({i},{j}))")
-                s_real = sol_data.data_real(f"S({i},{j})")
-                s_imag = sol_data.data_imag(f"S({i},{j})")
-                
-                if s_db is None:
+                if not self.ensure_connection():
+                    print(f"[WARN] Cannot reconnect to HFSS for S-params (attempt {attempt+1}/3)")
+                    self._connected = False
+                    if attempt < 2:
+                        time.sleep(3)
                     continue
                 
-                s_db = np.array(s_db).flatten()
+                print("[INFO] Getting S-parameters...")
                 
-                if s_real is not None and s_imag is not None:
-                    s_real = np.array(s_real).flatten()
-                    s_imag = np.array(s_imag).flatten()
-                    s_complex = s_real + 1j * s_imag
-                    mag = np.abs(s_complex)
-                    phase = np.angle(s_complex, deg=True)
-                else:
-                    # 无法获取实部和虚部，从 dB 值估算幅值，相位设为 0
-                    mag = 10 ** (s_db / 20)
-                    phase = np.zeros_like(s_db)
-                    # 估算的实部和虚部（相位为 0）
-                    s_real = mag
-                    s_imag = np.zeros_like(mag)
+                sweep_path = f"{self.setup_name} : {self.sweep_name}"
                 
-                result['ports'][(i, j)] = {
-                    'mag': mag,
-                    'phase': phase,
-                    'db': s_db,
-                    'real': s_real,
-                    'imag': s_imag,
-                }
-            
-            print(f"[OK] S-params: {len(freq)} freq points, {freq.min():.2f}-{freq.max():.2f} GHz")
-            return result
-            
-        except Exception as e:
-            print(f"[ERROR] Get S-params: {e}")
-            return None
+                expressions = []
+                for (i, j) in ports:
+                    expressions.extend([f"dB(S({i},{j}))", f"S({i},{j})"])
+                
+                report = self.hfss.post.reports_by_category.standard(setup=sweep_path)
+                report.domain = "Sweep"
+                report.expressions = expressions
+                report.create()
+                
+                sol_data = report.get_solution_data()
+                
+                try:
+                    report.delete()
+                except Exception:
+                    pass
+
+                if sol_data is None or not hasattr(sol_data, 'data_real'):
+                    print("[WARN] No solution data")
+                    return None
+                
+                try:
+                    freq = sol_data.primary_sweep_values
+                    if freq is not None:
+                        freq = np.array(freq).flatten()
+                        if np.max(freq) > 100:
+                            freq = freq / 1e9
+                    else:
+                        freq = np.linspace(4, 8, 100)
+                except Exception:
+                    freq = np.linspace(4, 8, 100)
+
+                result = {'freq': freq, 'ports': {}}
+                
+                for (i, j) in ports:
+                    s_db = sol_data.data_real(f"dB(S({i},{j}))")
+                    s_real = sol_data.data_real(f"S({i},{j})")
+                    s_imag = sol_data.data_imag(f"S({i},{j})")
+                    
+                    if s_db is None:
+                        continue
+                    
+                    s_db = np.array(s_db).flatten()
+                    
+                    if s_real is not None and s_imag is not None:
+                        s_real = np.array(s_real).flatten()
+                        s_imag = np.array(s_imag).flatten()
+                        s_complex = s_real + 1j * s_imag
+                        mag = np.abs(s_complex)
+                        phase = np.angle(s_complex, deg=True)
+                    else:
+                        mag = 10 ** (s_db / 20)
+                        phase = np.zeros_like(s_db)
+                        s_real = mag
+                        s_imag = np.zeros_like(mag)
+                    
+                    result['ports'][(i, j)] = {
+                        'mag': mag, 'phase': phase, 'db': s_db,
+                        'real': s_real, 'imag': s_imag,
+                    }
+                
+                print(f"[OK] S-params: {len(freq)} freq points, {freq.min():.2f}-{freq.max():.2f} GHz")
+                return result
+                
+            except Exception as e:
+                err_str = str(e).lower()
+                print(f"[WARN] Get S-params failed (attempt {attempt+1}/3): {e}")
+                
+                is_connection_error = any(x in err_str for x in [
+                    'nonetype', 'bool', 'object is not iterable',
+                    'hfss terminal', 'argument of type', 'attribute',
+                    'none', 'disconnected', 'closed', 'failed'
+                ])
+                
+                if attempt >= 2:
+                    # 所有重试都失败了
+                    if is_connection_error:
+                        self._connected = False
+                    raise RuntimeError(f"get_s-params failed after 3 attempts: {e}")
+                
+                # 不是最后一次重试，尝试重连后继续
+                if is_connection_error:
+                    self._connected = False
+                    print(f"[INFO] Attempting to reconnect...")
+                    if self._reconnect():
+                        print(f"[INFO] Reconnected, retrying get_s_parameters...")
+                        continue
+                    time.sleep(5)
+                
+                # 继续循环重试
+                continue
+        
+        return None
     
     def get_gain(self, freq_ghz: float) -> Optional[float]:
         """
@@ -615,6 +872,10 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
             峰值增益 (dB) - 已转换为 dB 单位
         """
         if not self._connected:
+            return None
+        
+        if not self.ensure_connection():
+            print("[WARN] Cannot reconnect to HFSS for gain")
             return None
         
         try:
@@ -758,6 +1019,10 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
         if not self._connected:
             return None
         
+        if not self.ensure_connection():
+            print("[WARN] Cannot reconnect to HFSS for Z-params")
+            return None
+        
         try:
             sweep_path = f"{self.setup_name} : {self.sweep_name}"
             
@@ -805,13 +1070,11 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
             return None
     
     def clear_solution_cache(self):
-        """清除HFSS解决方案缓存（报告数据、场数据等）
-
-        调用此方法可以释放HFSS内存中缓存的仿真数据，
-        避免长时间运行后HFSS变得卡顿。
-        在每次仿真迭代结束后调用。
-        """
+        """清除HFSS解决方案缓存（报告数据、场数据等）"""
         if not self._connected or not self.hfss:
+            return
+        
+        if not self.ensure_connection():
             return
 
         try:

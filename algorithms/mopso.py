@@ -275,32 +275,48 @@ class MOPSO(BaseOptimizer):
         n_surrogate_evals = 0
         
         for i, particle in enumerate(self.particles):
-            # 如果代理模型已训练好，不强制真实仿真
-            force_real = not use_surrogate_for_init
-            y, is_real = self._evaluate(particle, evaluator, force_real=force_real)
+            while True:
+                try:
+                    force_real = not use_surrogate_for_init
+                    y, is_real = self._evaluate(particle, evaluator, force_real=force_real)
+                    break  # 成功，跳出循环
+                except RuntimeError as e:
+                    print(f"  [ERROR] Evaluation failed (HFSS error): {e}")
+                    print(f"  [INFO] Will retry after reconnection...")
+                    import time
+                    time.sleep(10)
+                    continue  # 重试
             
             if is_real:
                 n_real_evals += 1
             else:
                 n_surrogate_evals += 1
             
-            self.pbest[i] = particle.copy()
-            self.pbest_objectives[i] = y.copy()
+            if not self.is_penalty_value(y):
+                self.pbest[i] = particle.copy()
+                self.pbest_objectives[i] = y.copy()
+                self._update_archive(particle, y, is_predicted=not is_real)
             
-            # 更新外部档案
-            self._update_archive(particle, y, is_predicted=not is_real)
-            
-            # 回调更新图表（真实和代理预测都回调）
             if self.callback:
-                surrogate_preds = self._last_surrogate_pred if not is_real else None
-                # 真实仿真时也传递代理预测值（用于对比图）
-                if is_real and self._last_surrogate_pred is not None:
-                    surrogate_preds = self._last_surrogate_pred
-                is_surrogate = not is_real
-                self.callback(i, self.population_size, particle, y, 'initial', surrogate_preds, is_surrogate)
+                if not self.is_penalty_value(y):
+                    surrogate_preds = self._last_surrogate_pred if not is_real else None
+                    if is_real and self._last_surrogate_pred is not None:
+                        surrogate_preds = self._last_surrogate_pred
+                    is_surrogate = not is_real
+                    self.callback(i, self.population_size, particle, y, 'initial', surrogate_preds, is_surrogate)
         
         print(f"[INFO] Initial evaluation: {n_real_evals} real, {n_surrogate_evals} surrogate")
         print(f"[INFO] Archive size after initialization: {len(self.archive)}")
+        
+        # 初始化后早停检查
+        if self.stop_when_goal_met:
+            archive_objectives = [np.array(sol['objectives']) for sol in self.archive]
+            if len(archive_objectives) > 0:
+                goals_count = self.count_objectives_meeting_goals_from_arrays(archive_objectives)
+                print(f"[INFO] Goals check: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                if goals_count >= self.n_solutions_to_stop:
+                    print(f"\n[INFO] Early stop after initialization: {goals_count} solutions meet goals")
+                    return self._get_pareto_solutions()
         
         # 迭代优化
         for gen in range(self.n_generations):
@@ -330,36 +346,43 @@ class MOPSO(BaseOptimizer):
             
             # 评估新位置
             for i in range(self.population_size):
-                y, is_real = self._evaluate(self.particles[i], evaluator)
+                while True:
+                    try:
+                        y, is_real = self._evaluate(self.particles[i], evaluator)
+                        break  # 成功，跳出循环
+                    except RuntimeError as e:
+                        print(f"  [ERROR] Evaluation failed (HFSS error): {e}")
+                        print(f"  [INFO] Will retry after reconnection...")
+                        import time
+                        time.sleep(10)
+                        continue  # 重试
                 
-                # PSO 迭代：总是用返回的目标值更新个体最优
-                if self._dominates(y, self.pbest_objectives[i]):
-                    self.pbest[i] = self.particles[i].copy()
-                    self.pbest_objectives[i] = y.copy()
-                elif np.random.random() < 0.5:  # 非支配解有一定概率更新
-                    self.pbest[i] = self.particles[i].copy()
-                    self.pbest_objectives[i] = y.copy()
+                if not self.is_penalty_value(y):
+                    if self._dominates(y, self.pbest_objectives[i]):
+                        self.pbest[i] = self.particles[i].copy()
+                        self.pbest_objectives[i] = y.copy()
+                    elif np.random.random() < 0.5:
+                        self.pbest[i] = self.particles[i].copy()
+                        self.pbest_objectives[i] = y.copy()
+                    
+                    self._update_archive(self.particles[i], y, is_predicted=not is_real)
                 
-                # 更新外部档案（标记数据来源）
-                self._update_archive(self.particles[i], y, is_predicted=not is_real)
-                
-                # 回调更新图表（真实和代理预测都回调）
                 if self.callback:
-                    surrogate_preds = self._last_surrogate_pred if not is_real else None
-                    # 真实仿真时也传递代理预测值（用于对比图）
-                    if is_real and self._last_surrogate_pred is not None:
-                        surrogate_preds = self._last_surrogate_pred
-                    is_surrogate = not is_real
-                    self.callback(gen, self.n_generations, self.particles[i], y, 'iteration', surrogate_preds, is_surrogate)
+                    if not self.is_penalty_value(y):
+                        surrogate_preds = self._last_surrogate_pred if not is_real else None
+                        if is_real and self._last_surrogate_pred is not None:
+                            surrogate_preds = self._last_surrogate_pred
+                        is_surrogate = not is_real
+                        self.callback(gen, self.n_generations, self.particles[i], y, 'iteration', surrogate_preds, is_surrogate)
 
-            # 早停检查（基于外部档案中的真实评估结果）
-            real_archive = [sol for sol in self.archive if not sol.get('is_predicted', False)]
-            if len(real_archive) > 0:
-                archive_objectives = [np.array(sol['objectives']) for sol in real_archive]
-                goals_count = self.count_objectives_meeting_goals_from_arrays(archive_objectives)
-                if goals_count >= self.n_solutions_to_stop:
-                    print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
-                    break
+            # 早停检查（统计所有解，包括代理预测）
+            if self.stop_when_goal_met:
+                archive_objectives = [np.array(sol['objectives']) for sol in self.archive]
+                if len(archive_objectives) > 0:
+                    goals_count = self.count_objectives_meeting_goals_from_arrays(archive_objectives)
+                    if goals_count >= self.n_solutions_to_stop:
+                        print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                        break
         
         # 返回 Pareto 前沿
         return self._get_pareto_solutions()
@@ -704,16 +727,43 @@ class MOPSO(BaseOptimizer):
     
     def _real_evaluate(self, x: np.ndarray, evaluator) -> np.ndarray:
         """真实仿真评估"""
-        # 格式化参数（根据变量配置的 precision）
+        # 格式化参数
         x_formatted = self.format_params(x)
         
-        # 设置变量并运行仿真
-        for j, var in enumerate(self.variables):
-            evaluator.hfss.set_variable(var['name'], x_formatted[j], var.get('unit', 'mm'))
+        # 检查变量约束
+        if self._has_formulas:
+            params_dict = {v['name']: x_formatted[i] for i, v in enumerate(self.variables)}
+            valid, msg = self.constraint_mgr.check_constraints(params_dict)
+            if not valid:
+                print(f"  [CONSTRAINT VIOLATION] {msg} -> returning penalty")
+                return self.get_penalty_objectives()
         
-        if not evaluator.hfss.analyze(force=True):
-            # 仿真失败，返回惩罚值
-            return np.array([1e6] * self.n_objectives)
+        # 设置变量并运行仿真 - 持续重试直到成功
+        while True:
+            try:
+                for j, var in enumerate(self.variables):
+                    evaluator.hfss.set_variable(var['name'], x_formatted[j], var.get('unit', 'mm'))
+                break  # 成功设置变量，跳出循环
+            except RuntimeError as e:
+                print(f"  [ERROR] Failed to set variable: {e}")
+                print(f"  [INFO] HFSS disconnected, waiting to reconnect...")
+                import time
+                time.sleep(10)  # 等待10秒
+                continue  # 继续重试
+        
+        # 分析 - 持续重试直到成功
+        while True:
+            try:
+                if evaluator.hfss.analyze(force=True):
+                    break  # 分析成功，跳出循环
+                # analyze() 返回 False 表示失败，等待后重试
+                print(f"  [WARN] Analysis returned False, retrying...")
+            except Exception as e:
+                print(f"  [ERROR] Analysis failed: {e}")
+            print(f"  [INFO] HFSS disconnected, waiting to reconnect...")
+            import time
+            time.sleep(10)  # 等待10秒
+            continue  # 继续重试
         
         # 清除缓存
         evaluator.clear_cache()

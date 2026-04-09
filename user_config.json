@@ -1,7 +1,7 @@
 {
   "hfss": {
     "project_path": "C:/Users/16438/Desktop/pyHFSSProject/n2.aedt",
-    "design_name": "S3",
+    "design_name": "HFSSDesign1",
     "setup_name": "Setup1",
     "sweep_name": "Sweep"
   },
@@ -9,48 +9,40 @@
     {
       "name": "Wm",
       "bounds": [
-        0.2,
-        1.5
+        0.5,
+        2.0
+      ],
+      "unit": "mm"
+    },
+    {
+      "name": "Lm",
+      "bounds": [
+        "Lp-Lm2",
+        7.0
       ],
       "unit": "mm"
     },
     {
       "name": "Wm2",
       "bounds": [
-        0.2,
-        1.4
+        0.3,
+        2.0
       ],
       "unit": "mm"
     },
     {
-      "name": "Wm3",
+      "name": "Lm2",
       "bounds": [
-        0.2,
-        1.0
-      ],
-      "unit": "mm"
-    },
-    {
-      "name": "Md",
-      "bounds": [
-        1.0,
-        3.5
+        6.0,
+        14.0
       ],
       "unit": "mm"
     },
     {
       "name": "Wp",
       "bounds": [
-        8.0,
-        14.0
-      ],
-      "unit": "mm"
-    },
-    {
-      "name": "Lp",
-      "bounds": [
-        8.0,
-        14.0
+        6.0,
+        10.0
       ],
       "unit": "mm"
     },
@@ -63,50 +55,26 @@
       "unit": "mm"
     },
     {
-      "name": "Sangle",
+      "name": "Wc",
       "bounds": [
-        0.5,
-        1.5
+        3.0,
+        5.5
       ],
       "unit": "mm"
     },
     {
-      "name": "Wm4",
+      "name": "Lp",
       "bounds": [
-        0.2,
-        2.0
+        5.0,
+        14.0
       ],
       "unit": "mm"
     },
     {
       "name": "Wd",
       "bounds": [
-        0.5,
-        2.0
-      ],
-      "unit": "mm"
-    },
-    {
-      "name": "Lm",
-      "bounds": [
-        3.0,
-        6.0
-      ],
-      "unit": "mm"
-    },
-    {
-      "name": "Lm4",
-      "bounds": [
-        1.0,
-        4.0
-      ],
-      "unit": "mm"
-    },
-    {
-      "name": "Wc",
-      "bounds": [
-        4.0,
-        5.5
+        0.3,
+        2.5
       ],
       "unit": "mm"
     }
@@ -115,35 +83,27 @@
     {
       "name": "S11",
       "type": "formula",
-      "goal": -10.0,
+      "goal": -20.0,
       "target": "minimize",
       "weight": 2.1,
       "freq_range": [
-        5.7,
-        6.1
+        5.8,
+        6.0
       ],
       "formula": "dB(S(1,1))"
-    },
-    {
-      "name": "PeakGain",
-      "type": "peak_gain",
-      "goal": 7.5,
-      "target": "maximize",
-      "weight": 1.0,
-      "freq": 5.9
     }
   ],
   "algorithm": {
     "algorithm": "mopso",
     "population_size": 20,
-    "n_generations": 15,
+    "n_generations": 20,
     "surrogate_type": "gpflow_svgp",
     "use_surrogate": true,
     "surrogate_config": {
-      "min_samples": 20,
+      "min_samples": 50,
       "uncertainty_threshold": 0.1,
       "model_params": {
-        "min_new_samples_to_train": 5,
+        "min_new_samples_to_train": 20,
         "n_inducing": 100,
         "kernel_type": "matern52"
       }

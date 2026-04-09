@@ -186,6 +186,7 @@ class SurrogateManager:
     # 异常值阈值：目标值超过此范围视为异常
     ABNORMAL_VALUE_THRESHOLD = 100.0  # 超过100视为异常
     SIMULATION_FAILURE_VALUE = 1000.0  # HFSS仿真失败的典型返回值
+    PENALTY_VALUE = 999.0  # 约束违反时的惩罚值
     
     def __init__(self, n_objectives: int, model_type: str = 'gp', min_samples: int = 3, n_estimators: int = 100):
         """
@@ -215,11 +216,12 @@ class SurrogateManager:
         判断样本是否应该被过滤
         
         过滤条件：
-        - 仅检查 S11（第一个目标值）是否为 1000.0
-        - S11=1000.0 表示 HFSS 仿真失败
+        - 目标值为惩罚值 (999.0 或 -999.0)
+        - 目标值为仿真失败值 (1000.0)
+        - 目标值为异常值 (绝对值 > ABNORMAL_VALUE_THRESHOLD)
         
         Args:
-            y: 目标值数组，y[0] 为 S11
+            y: 目标值数组
             
         Returns:
             True 表示应该过滤掉该样本
@@ -228,10 +230,17 @@ class SurrogateManager:
         if len(y_flat) < 1:
             return False
         
-        # 只检查 S11（第一个目标值）是否为 1000.0
-        s11_value = y_flat[0]
-        if abs(s11_value - self.SIMULATION_FAILURE_VALUE) < 1e-6:
-            return True
+        # 检查所有目标值
+        for val in y_flat:
+            # 检查惩罚值 (999.0 或 -999.0)
+            if abs(abs(val) - self.PENALTY_VALUE) < 1e-6:
+                return True
+            # 检查仿真失败值 (1000.0)
+            if abs(val - self.SIMULATION_FAILURE_VALUE) < 1e-6:
+                return True
+            # 检查异常值 (绝对值 > 100)
+            if abs(val) > self.ABNORMAL_VALUE_THRESHOLD:
+                return True
         
         return False
     
@@ -1127,9 +1136,10 @@ class GPflowSVSManager:
     用于管理GPflowSVSurrogate模型，提供与SurrogateManager相同的接口
     """
     
-    # 异常值阈值：目标值超过此范围视为异常
+    # 异常值阈值
     ABNORMAL_VALUE_THRESHOLD = 100.0  # 超过100视为异常
     SIMULATION_FAILURE_VALUE = 1000.0  # HFSS仿真失败的典型返回值
+    PENALTY_VALUE = 999.0  # 约束违反时的惩罚值
 
     def __init__(self, n_objectives: int, min_samples: int = 5,
                  n_inducing: int = 100, kernel_type: str = 'matern52',
@@ -1164,11 +1174,12 @@ class GPflowSVSManager:
         判断样本是否应该被过滤
         
         过滤条件：
-        - 仅检查 S11（第一个目标值）是否为 1000.0
-        - S11=1000.0 表示 HFSS 仿真失败
+        - 目标值为惩罚值 (999.0 或 -999.0)
+        - 目标值为仿真失败值 (1000.0)
+        - 目标值为异常值 (绝对值 > ABNORMAL_VALUE_THRESHOLD)
         
         Args:
-            y: 目标值数组，y[0] 为 S11
+            y: 目标值数组
             
         Returns:
             True 表示应该过滤掉该样本
@@ -1177,10 +1188,17 @@ class GPflowSVSManager:
         if len(y_flat) < 1:
             return False
         
-        # 只检查 S11（第一个目标值）是否为 1000.0
-        s11_value = y_flat[0]
-        if abs(s11_value - self.SIMULATION_FAILURE_VALUE) < 1e-6:
-            return True
+        # 检查所有目标值
+        for val in y_flat:
+            # 检查惩罚值 (999.0 或 -999.0)
+            if abs(abs(val) - self.PENALTY_VALUE) < 1e-6:
+                return True
+            # 检查仿真失败值 (1000.0)
+            if abs(val - self.SIMULATION_FAILURE_VALUE) < 1e-6:
+                return True
+            # 检查异常值 (绝对值 > 100)
+            if abs(val) > self.ABNORMAL_VALUE_THRESHOLD:
+                return True
         
         return False
 

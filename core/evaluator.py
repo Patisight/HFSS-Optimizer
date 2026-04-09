@@ -42,6 +42,7 @@ class ObjectiveEvaluator:
         self.objectives = objectives_config
         self.hfss = hfss_controller
         self._s_data_cache = None
+        self._last_hfss_connection_ok = True
         
         # 仿真数据保存
         self.output_dir = output_dir
@@ -115,6 +116,14 @@ class ObjectiveEvaluator:
         Returns:
             (目标值列表, 结果字典)
         """
+        # 检查 HFSS 连接状态，如果断开后重连则清除缓存
+        if self.hfss and hasattr(self.hfss, 'ensure_connection'):
+            connection_ok = self.hfss.ensure_connection()
+            if connection_ok and not self._last_hfss_connection_ok:
+                print("[INFO] HFSS reconnected, clearing cached data")
+                self.clear_cache()
+            self._last_hfss_connection_ok = connection_ok
+        
         obj_values = []
         results = {}
         
@@ -166,6 +175,9 @@ class ObjectiveEvaluator:
                 goal_met=goal_met,
             )
             
+        except RuntimeError as e:
+            print(f"[ERROR] Evaluate {name}: HFSS connection error - {e}")
+            raise
         except Exception as e:
             print(f"[WARN] Evaluate {name}: {e}")
             return ObjectiveResult(

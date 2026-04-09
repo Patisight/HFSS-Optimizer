@@ -5,6 +5,11 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.constraint import VariableConstraint
 
 
 class BaseOptimizer(ABC):
@@ -21,16 +26,23 @@ class BaseOptimizer(ABC):
         self.variables = config.get('variables', [])
         self.objectives = config.get('objectives', [])
 
-        # 早停配置
         self.stop_when_goal_met = config.get('stop_when_goal_met', False)
         self.n_solutions_to_stop = config.get('n_solutions_to_stop', 3)
 
-        # 统计信息
         self.evaluation_count = 0
         self.real_evaluation_count = 0
         
-        # 缓存
         self._cache = {}
+        
+        self.constraint_mgr = VariableConstraint(self.variables)
+        self._has_formulas = self.constraint_mgr.has_formulas()
+        
+        if self._has_formulas:
+            print(f"[CONSTRAINT] Found formula bounds in variables")
+            print(f"[CONSTRAINT] Evaluation order: {self.constraint_mgr.eval_order}")
+            dep_vars = self.constraint_mgr.get_dependent_vars()
+            if dep_vars:
+                print(f"[CONSTRAINT] Dependent variables: {dep_vars}")
     
     @abstractmethod
     def run(self, evaluator) -> List[Dict]:
@@ -150,13 +162,82 @@ class BaseOptimizer(ABC):
         return distances
     
     def get_bounds(self) -> np.ndarray:
-        """获取变量边界"""
-        return np.array([v['bounds'] for v in self.variables])
+        """获取变量边界（静态，不考虑公式）"""
+        bounds = []
+        for v in self.variables:
+            lb, ub = v['bounds']
+            if isinstance(lb, str):
+                lb = 0.0
+            if isinstance(ub, str):
+                ub = 1.0
+            bounds.append([lb, ub])
+        return np.array(bounds, dtype=float)
+    
+    def get_static_bounds(self) -> np.ndarray:
+        """获取静态边界（用于算法初始化，公式边界取默认值）"""
+        return self.get_bounds()
     
     def clip_to_bounds(self, params: np.ndarray) -> np.ndarray:
-        """将参数裁剪到边界内"""
-        bounds = self.get_bounds()
-        return np.clip(params, bounds[:, 0], bounds[:, 1])
+        """将参数裁剪到边界内（支持公式边界）"""
+        if not self._has_formulas:
+            bounds = self.get_static_bounds()
+            return np.clip(params, bounds[:, 0], bounds[:, 1])
+        
+        params_dict = self._params_to_dict(params)
+        repaired = self.constraint_mgr.repair_params(params_dict)
+        return self._dict_to_params(repaired)
+    
+    def check_constraints(self, params: np.ndarray) -> Tuple[bool, str]:
+        """检查参数是否满足约束"""
+        if not self._has_formulas:
+            return True, ""
+        params_dict = self._params_to_dict(params)
+        return self.constraint_mgr.check_constraints(params_dict)
+    
+    def get_penalty_objectives(self, n_obj: int = None) -> np.ndarray:
+        """获取惩罚目标值（违反约束时返回）"""
+        if n_obj is None:
+            n_obj = len(self.objectives)
+        
+        penalty = np.zeros(n_obj)
+        for i, obj in enumerate(self.objectives):
+            target = obj.get('target', 'minimize')
+            if target == 'minimize':
+                penalty[i] = 999.0
+            else:
+                penalty[i] = -999.0
+        return penalty
+    
+    def is_penalty_value(self, y: np.ndarray) -> bool:
+        """检查目标值是否为惩罚值或异常值
+        
+        Args:
+            y: 目标值数组
+            
+        Returns:
+            True 如果是惩罚值或异常值
+        """
+        PENALTY_VALUE = 999.0
+        SIMULATION_FAILURE_VALUE = 1000.0
+        ABNORMAL_THRESHOLD = 100.0
+        
+        y_flat = y.flatten()
+        for val in y_flat:
+            if abs(abs(val) - PENALTY_VALUE) < 1e-6:
+                return True
+            if abs(val - SIMULATION_FAILURE_VALUE) < 1e-6:
+                return True
+            if abs(val) > ABNORMAL_THRESHOLD:
+                return True
+        return False
+    
+    def _params_to_dict(self, params: np.ndarray) -> Dict[str, float]:
+        """参数数组转字典"""
+        return {v['name']: params[i] for i, v in enumerate(self.variables)}
+    
+    def _dict_to_params(self, params_dict: Dict[str, float]) -> np.ndarray:
+        """参数字典转数组"""
+        return np.array([params_dict.get(v['name'], 0.0) for v in self.variables])
     
     def format_param(self, value: float, var_index: int) -> float:
         """
@@ -231,6 +312,8 @@ class BaseOptimizer(ABC):
     def check_objectives_meet_goals(self, obj_values: np.ndarray) -> bool:
         """
         检查一组目标值是否全部达到目标（用于MOPSO等算法）
+        
+        注意：对于 maximize 目标，obj_values 存储的是 -actual（负值）
 
         Args:
             obj_values: 目标值数组
@@ -238,6 +321,7 @@ class BaseOptimizer(ABC):
         Returns:
             是否全部达标
         """
+        all_met = True
         for i, obj_config in enumerate(self.objectives):
             if i >= len(obj_values):
                 return False
@@ -250,11 +334,13 @@ class BaseOptimizer(ABC):
 
             if target == 'minimize':
                 if val > goal:
-                    return False
+                    all_met = False
             elif target == 'maximize':
-                if val < goal:
-                    return False
-        return True
+                # val 是 -actual，所以要检查 -val >= goal，即 actual >= goal
+                if -val < goal:
+                    all_met = False
+        
+        return all_met
 
     def count_objectives_meeting_goals_from_arrays(self, objectives_array: List[np.ndarray]) -> int:
         """
@@ -267,7 +353,10 @@ class BaseOptimizer(ABC):
             达标的解数量
         """
         count = 0
-        for obj_values in objectives_array:
+        for idx, obj_values in enumerate(objectives_array):
             if self.check_objectives_meet_goals(obj_values):
                 count += 1
+                # 打印达标的解
+                obj_str = ", ".join([f"{v:.4f}" for v in obj_values])
+                print(f"  [Goal met] Solution {idx+1}: [{obj_str}]")
         return count

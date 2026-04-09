@@ -206,39 +206,79 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
         print(f"Acquisition: {self.acquisition.upper()}")
         print(f"{'='*60}")
         
-        # Step 1: 初始采样
-        X_init = self._lhs_sampling(self.n_initial)
-        
-        # Step 2: 评估初始样本
+        X_init = []
         y_init = []
-        for i, x in enumerate(X_init):
-            print(f"  [{i+1}/{self.n_initial}] Evaluating...")
-            
-            # 设置变量
-            for j, var in enumerate(self.variables):
-                evaluator.hfss.set_variable(var['name'], x[j], var.get('unit', 'mm'))
-            
-            # 运行仿真
-            if not evaluator.hfss.analyze(force=True):
-                print(f"    [WARN] Analysis failed")
-                y_init.append([1e6] * self.n_objectives)
-            else:
-                # 评估目标
+        
+        for i in range(self.n_initial):
+            while True:
+                x = self._lhs_sampling(1).flatten()
+                print(f"  [{len(X_init)+1}/{self.n_initial}] Evaluating...")
+                
+                if self._has_formulas:
+                    params_dict = {v['name']: x[j] for j, v in enumerate(self.variables)}
+                    valid, msg = self.constraint_mgr.check_constraints(params_dict)
+                    if not valid:
+                        print(f"  [CONSTRAINT VIOLATION] {msg} -> resampling")
+                        continue
+                
+                for j, var in enumerate(self.variables):
+                    evaluator.hfss.set_variable(var['name'], x[j], var.get('unit', 'mm'))
+                
+                # 分析 - 持续重试直到成功
+                while True:
+                    try:
+                        if evaluator.hfss.analyze(force=True):
+                            break
+                        print(f"    [WARN] Analysis returned False, retrying...")
+                    except Exception as e:
+                        print(f"    [ERROR] Analysis failed: {e}")
+                    print(f"    [INFO] HFSS disconnected, waiting to reconnect...")
+                    import time
+                    time.sleep(10)
+                    continue
+                
                 evaluator.clear_cache()
-                obj_values, _ = evaluator.evaluate_all(x)
-                if obj_values is not None:
-                    y_init.append(obj_values)
-                else:
-                    y_init.append([1e6] * self.n_objectives)
-            
-            if self.callback:
-                self.callback(i, self.n_initial, x, y_init[-1], 'initial')
+                
+                # 评估 - 持续重试直到成功
+                while True:
+                    try:
+                        result = evaluator.evaluate_all(x)
+                        break
+                    except RuntimeError as e:
+                        print(f"    [ERROR] Evaluation failed: {e}")
+                        print(f"    [INFO] HFSS disconnected, waiting to reconnect...")
+                        import time
+                        time.sleep(10)
+                        continue
+                
+                if result is None:
+                    print(f"    [WARN] Evaluation failed -> resampling")
+                    continue
+                
+                y = np.array(result[0]) if isinstance(result, tuple) else np.array(result)
+                if self.is_penalty_value(y):
+                    print(f"    [WARN] Abnormal objective value -> resampling")
+                    continue
+                
+                X_init.append(x)
+                y_init.append(y.tolist())
+                
+                if self.callback:
+                    self.callback(len(X_init)-1, self.n_initial, x, y, 'initial')
+                break
         
         self.X_observed = np.array(X_init)
         self.y_observed = np.array(y_init)
         
-        # Step 3: 训练代理模型
         self._train_models()
+        
+        # 初始化后早停检查
+        if self.stop_when_goal_met:
+            goals_count = self.count_objectives_meeting_goals_from_arrays([self.y_observed[i] for i in range(len(self.y_observed))])
+            print(f"[INFO] Goals check: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+            if goals_count >= self.n_solutions_to_stop:
+                print(f"\n[INFO] Early stop after initialization: {goals_count} solutions meet goals")
+                return self._get_pareto_solutions()
         
         # Step 4: 迭代优化
         for iteration in range(self.n_iterations):
@@ -247,38 +287,67 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
             # 选择下一个评估点
             x_next = self._select_next_point()
             
-            # 设置变量
+            if self._has_formulas:
+                params_dict = {v['name']: x_next[j] for j, v in enumerate(self.variables)}
+                valid, msg = self.constraint_mgr.check_constraints(params_dict)
+                if not valid:
+                    print(f"  [CONSTRAINT VIOLATION] {msg} -> penalty (ignored)")
+                    continue
+            
             for j, var in enumerate(self.variables):
                 evaluator.hfss.set_variable(var['name'], x_next[j], var.get('unit', 'mm'))
             
-            # 运行仿真
-            if not evaluator.hfss.analyze(force=True):
-                print(f"  [WARN] Analysis failed")
-                y_next = [1e6] * self.n_objectives
+            # 分析 - 持续重试直到成功
+            while True:
+                try:
+                    if evaluator.hfss.analyze(force=True):
+                        break
+                    print(f"  [WARN] Analysis returned False, retrying...")
+                except Exception as e:
+                    print(f"  [ERROR] Analysis failed: {e}")
+                print(f"  [INFO] HFSS disconnected, waiting to reconnect...")
+                import time
+                time.sleep(10)
+                continue
+            
+            evaluator.clear_cache()
+            
+            # 评估 - 持续重试直到成功
+            while True:
+                try:
+                    result = evaluator.evaluate_all(x_next)
+                    break
+                except RuntimeError as e:
+                    print(f"  [ERROR] Evaluation failed: {e}")
+                    print(f"  [INFO] HFSS disconnected, waiting to reconnect...")
+                    import time
+                    time.sleep(10)
+                    continue
+            
+            if result is None:
+                print(f"  [WARN] Evaluation failed")
+                continue
             else:
-                # 真实评估
-                evaluator.clear_cache()
-                y_next, _ = evaluator.evaluate_all(x_next)
-                if y_next is None:
-                    y_next = [1e6] * self.n_objectives
+                y_next = np.array(result[0]) if isinstance(result, tuple) else np.array(result)
             
-            # 更新数据
+            if self.is_penalty_value(y_next):
+                print(f"  [WARN] Abnormal objective value, skipping this point")
+                continue
+            
             self.X_observed = np.vstack([self.X_observed, x_next.reshape(1, -1)])
-            self.y_observed = np.vstack([self.y_observed, y_next])
+            self.y_observed = np.vstack([self.y_observed, y_next.reshape(1, -1)])
             
-            # 更新模型
             self._train_models()
             
-            # 更新帕累托前沿
             self._update_pareto_front()
 
             # 早停检查
-            goals_count = self.count_objectives_meeting_goals_from_arrays([self.y_observed[i] for i in range(len(self.y_observed))])
-            if goals_count >= self.n_solutions_to_stop:
-                print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
-                break
+            if self.stop_when_goal_met:
+                goals_count = self.count_objectives_meeting_goals_from_arrays([self.y_observed[i] for i in range(len(self.y_observed))])
+                if goals_count >= self.n_solutions_to_stop:
+                    print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                    break
             
-            # 回调
             if self.callback:
                 self.callback(iteration, self.n_iterations, x_next, y_next, 'iteration')
         

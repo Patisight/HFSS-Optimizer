@@ -415,33 +415,45 @@ class OptimizationVisualizer:
         plt.close(fig)
     
     def _plot_objective_space(self, iteration: int):
-        """绘制目标空间探索过程"""
+        """绘制目标空间探索过程
+        
+        过滤异常值（惩罚值、仿真失败值）
+        """
+        PENALTY_VALUE = 999.0
+        SIMULATION_FAILURE_VALUE = 1000.0
+        ABNORMAL_THRESHOLD = 100.0
+        
         if self.n_objectives >= 1:
             fig, axes = plt.subplots(1, max(self.n_objectives, 1), figsize=(5*max(self.n_objectives, 1), 4))
             if self.n_objectives == 1:
                 axes = [axes]
             
-            # 获取目标类型
             obj_targets = [obj.get('target', 'minimize') for obj in self.objectives]
             
             for i, ax in enumerate(axes):
-                # 兼容列表格式
                 obj_values = []
+                valid_iterations = []
+                
                 for e in self.evaluations:
                     obj = e['objectives']
                     if isinstance(obj, list) and len(obj) > i:
                         val = obj[i]
-                        # 对于 maximize 目标，取反显示实际值
+                        
                         if i < len(obj_targets) and obj_targets[i] == 'maximize':
                             val = -val
+                        
+                        if (abs(abs(val) - PENALTY_VALUE) < 1e-6 or
+                            abs(val - SIMULATION_FAILURE_VALUE) < 1e-6 or
+                            abs(val) > ABNORMAL_THRESHOLD):
+                            continue
+                        
                         obj_values.append(val)
+                        valid_iterations.append(e['iteration'])
                     else:
-                        obj_values.append(0)
+                        pass
                 
-                iterations = [e['iteration'] for e in self.evaluations]
-                
-                if len(iterations) > 0 and len(obj_values) > 0:
-                    ax.scatter(iterations, obj_values, c=range(len(obj_values)), cmap='viridis', s=30)
+                if len(valid_iterations) > 0 and len(obj_values) > 0:
+                    ax.scatter(valid_iterations, obj_values, c=range(len(obj_values)), cmap='viridis', s=30)
                 ax.set_xlabel('Iteration')
                 obj_name = self.objectives[i].get('name', f'Objective {i+1}') if i < len(self.objectives) else f'Objective {i+1}'
                 ax.set_ylabel(obj_name)

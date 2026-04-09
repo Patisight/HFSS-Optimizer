@@ -361,6 +361,7 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         self.tabs.addTab(self.create_objectives_tab(), "🎯 优化目标")
         self.tabs.addTab(self.create_algorithm_tab(), "⚡ 算法配置")
         self.tabs.addTab(self.create_run_tab(), "🚀 运行控制")
+        self.tabs.addTab(self.create_help_tab(), "📖 使用说明")
         main_layout.addWidget(self.tabs)
 
     # ==================== 项目配置页 ====================
@@ -427,14 +428,14 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
 
-        layout.addWidget(QLabel("添加优化变量（天线设计参数，如长度、宽度、角度等）"))
+        layout.addWidget(QLabel("添加优化变量（天线设计参数，如长度、宽度、角度等）\n最小值/最大值可以输入数字或公式，如：(Wc-Wm2)/2+0.01"))
 
         self.var_table = QTableWidget()
         self.var_table.setColumnCount(4)
         self.var_table.setHorizontalHeaderLabels(['名称', '最小值', '最大值', '单位'])
         self.var_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.var_table.setColumnWidth(1, 100)
-        self.var_table.setColumnWidth(2, 100)
+        self.var_table.setColumnWidth(1, 120)
+        self.var_table.setColumnWidth(2, 120)
         self.var_table.setColumnWidth(3, 80)
         self.var_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.var_table.cellClicked.connect(self._on_var_table_selected)
@@ -450,17 +451,15 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         form_layout.addWidget(self.var_name_edit, 0, 1)
 
         form_layout.addWidget(QLabel("最小值:"), 0, 2)
-        self.var_min_edit = QDoubleSpinBox()
-        self.var_min_edit.setRange(-1e6, 1e6)
-        self.var_min_edit.setDecimals(4)
-        self.var_min_edit.setValue(0)
+        self.var_min_edit = QLineEdit()
+        self.var_min_edit.setPlaceholderText("数字或公式")
+        self.var_min_edit.setFixedWidth(120)
         form_layout.addWidget(self.var_min_edit, 0, 3)
 
         form_layout.addWidget(QLabel("最大值:"), 0, 4)
-        self.var_max_edit = QDoubleSpinBox()
-        self.var_max_edit.setRange(-1e6, 1e6)
-        self.var_max_edit.setDecimals(4)
-        self.var_max_edit.setValue(10)
+        self.var_max_edit = QLineEdit()
+        self.var_max_edit.setPlaceholderText("数字或公式")
+        self.var_max_edit.setFixedWidth(120)
         form_layout.addWidget(self.var_max_edit, 0, 5)
 
         form_layout.addWidget(QLabel("单位:"), 0, 6)
@@ -499,13 +498,20 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         if not name:
             self._show_message("警告", "请输入变量名称", "warning")
             return
+        min_val = self.var_min_edit.text().strip()
+        max_val = self.var_max_edit.text().strip()
+        if not min_val or not max_val:
+            self._show_message("警告", "请输入最小值和最大值", "warning")
+            return
         row = self.var_table.rowCount()
         self.var_table.insertRow(row)
         self.var_table.setItem(row, 0, QTableWidgetItem(name))
-        self.var_table.setItem(row, 1, QTableWidgetItem(str(self.var_min_edit.value())))
-        self.var_table.setItem(row, 2, QTableWidgetItem(str(self.var_max_edit.value())))
+        self.var_table.setItem(row, 1, QTableWidgetItem(min_val))
+        self.var_table.setItem(row, 2, QTableWidgetItem(max_val))
         self.var_table.setItem(row, 3, QTableWidgetItem(self.var_unit_edit.text()))
         self.var_name_edit.clear()
+        self.var_min_edit.clear()
+        self.var_max_edit.clear()
 
     def _on_var_table_selected(self, row, _col):
         """选中变量行时，将行数据回填到编辑表单"""
@@ -518,15 +524,9 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         if item_name:
             self.var_name_edit.setText(item_name.text())
         if item_min:
-            try:
-                self.var_min_edit.setValue(float(item_min.text()))
-            except ValueError:
-                pass
+            self.var_min_edit.setText(item_min.text())
         if item_max:
-            try:
-                self.var_max_edit.setValue(float(item_max.text()))
-            except ValueError:
-                pass
+            self.var_max_edit.setText(item_max.text())
         if item_unit:
             self.var_unit_edit.setText(item_unit.text())
 
@@ -536,8 +536,8 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
             self._show_message("警告", "请先选中要修改的行", "warning")
             return
         self.var_table.setItem(row, 0, QTableWidgetItem(self.var_name_edit.text()))
-        self.var_table.setItem(row, 1, QTableWidgetItem(str(self.var_min_edit.value())))
-        self.var_table.setItem(row, 2, QTableWidgetItem(str(self.var_max_edit.value())))
+        self.var_table.setItem(row, 1, QTableWidgetItem(self.var_min_edit.text()))
+        self.var_table.setItem(row, 2, QTableWidgetItem(self.var_max_edit.text()))
         self.var_table.setItem(row, 3, QTableWidgetItem(self.var_unit_edit.text()))
 
     def delete_variable(self):
@@ -580,7 +580,7 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
 
         form_layout.addWidget(QLabel("类型:"), 0, 2)
         self.obj_type_combo = QComboBox()
-        self.obj_type_combo.addItems(['S参数', 'Gain', 'peakGain'])
+        self.obj_type_combo.addItems(['S参数', 'Gain', 'peakGain', 'Z实部', 'Z虚部'])
         form_layout.addWidget(self.obj_type_combo, 0, 3)
 
         form_layout.addWidget(QLabel("目标值:"), 0, 4)
@@ -1243,6 +1243,181 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
 
         return widget
 
+    # ==================== 使用说明页 ====================
+    def create_help_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        help_text = QTextEdit()
+        help_text.setReadOnly(True)
+        help_text.setStyleSheet("""
+            font-size: 13px; 
+            line-height: 1.6;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+        """)
+        
+        help_content = """
+<style>
+    h1 { color: #4a9eff; }
+    h2 { color: #27ae60; }
+    h3 { color: #5dade2; }
+    h4 { color: #f39c12; }
+    p { color: #c0c0c0; }
+    li { color: #c0c0c0; }
+    td { color: #c0c0c0; }
+    th { color: #ffffff; }
+    code { color: #f39c12; background: #2a2a4a; padding: 2px 5px; border-radius: 3px; }
+    pre { 
+        background: #1a1a2e; 
+        color: #00ff88; 
+        padding: 15px; 
+        border-radius: 5px;
+        border: 1px solid #3a3a5c;
+        overflow-x: auto;
+    }
+    table {
+        border-collapse: collapse;
+        width: 100%;
+    }
+    th, td {
+        border: 1px solid #3a3a5c;
+        padding: 8px;
+        text-align: left;
+    }
+    th { background: #2a2a4a; }
+    tr:nth-child(even) { background: #252545; }
+    tr:nth-child(odd) { background: #1a1a2e; }
+    hr { border: none; border-top: 1px solid #3a3a5c; margin: 20px 0; }
+    .version { color: #888888; font-size: 12px; }
+</style>
+<h1>HFSS 天线优化程序 使用说明</h1>
+
+<h2>一、快速开始</h2>
+
+<h3>1. 项目配置</h3>
+<ul>
+<li><b>项目路径</b>：选择HFSS项目文件(.aedt)</li>
+<li><b>设计名称</b>：HFSS中的设计名称，如 HFSSDesign1</li>
+<li><b>Setup名称</b>：仿真设置名称，如 Setup1</li>
+<li><b>Sweep名称</b>：频率扫描名称，如 Sweep</li>
+</ul>
+
+<h3>2. 优化变量</h3>
+<p>定义需要优化的天线参数（如长度、宽度、角度等）。</p>
+<table>
+<tr><th>字段</th><th>说明</th><th>示例</th></tr>
+<tr><td>名称</td><td>变量名（与HFSS中一致）</td><td>Wm, Lp</td></tr>
+<tr><td>最小值</td><td>下界（数字或公式）</td><td>0.2 或 (Wc-Wm2)/2+0.01</td></tr>
+<tr><td>最大值</td><td>上界（数字或公式）</td><td>1.5</td></tr>
+<tr><td>单位</td><td>物理单位</td><td>mm, deg</td></tr>
+</table>
+
+<h3>📌 变量公式约束</h3>
+<p>变量边界支持公式表达式，实现变量间的依赖约束。</p>
+<p><b>示例</b>：Sangle 的最小值要求大于 (Wc-Wm2)/2+0.01</p>
+<pre>{"name": "Sangle", "bounds": ["(Wc-Wm2)/2+0.01", 1.5], "unit": "mm"}</pre>
+<p><b>支持的公式语法</b>：</p>
+<ul>
+<li>基本运算：<code>+ - * /</code></li>
+<li>括号：<code>(Wc-Wm2)/2</code></li>
+<li>函数：<code>abs() min() max() sqrt() pow() round() floor() ceil()</code></li>
+<li>三角函数：<code>sin() cos() tan()</code></li>
+<li>常量：<code>pi e</code></li>
+</ul>
+<p><b>约束违反处理</b>：当生成的参数违反约束时，自动返回惩罚值，不调用HFSS仿真。</p>
+
+<h3>3. 优化目标</h3>
+<table>
+<tr><th>类型</th><th>说明</th><th>配置示例</th></tr>
+<tr><td>S参数</td><td>S11/S21等回波损耗</td><td>频段: 5.7-6.1, 公式: dB(S(1,1)), 目标: -10</td></tr>
+<tr><td>Gain</td><td>增益</td><td>频段: 5.7-6.1, 目标: 5</td></tr>
+<tr><td>peakGain</td><td>峰值增益</td><td>频率: 5.9, 目标: 7.5</td></tr>
+<tr><td>阻抗</td><td>实部/虚部</td><td>频率: 5.9, 目标: 50</td></tr>
+</table>
+
+<h3>4. 算法选择</h3>
+<p><b>MOPSO</b>：多目标粒子群优化，推荐用于大多数场景</p>
+<p><b>NSGA2</b>：非支配排序遗传算法</p>
+<p><b>MOBO</b>：多目标贝叶斯优化，适合少量评估次数（&lt;100）</p>
+
+<h2>二、工作流程</h2>
+<ol>
+<li><b>配置项目</b>：设置HFSS项目路径和设计名称</li>
+<li><b>定义变量</b>：添加优化变量及其范围</li>
+<li><b>设置目标</b>：添加优化目标（最小化/最大化）</li>
+<li><b>配置算法</b>：选择算法、种群大小、迭代次数等</li>
+<li><b>启用代理模型</b>（可选）：加速收敛，减少HFSS仿真次数</li>
+<li><b>开始优化</b>：点击"开始优化"按钮</li>
+<li><b>监控进度</b>：观察帕累托前沿和目标值变化</li>
+<li><b>查看结果</b>：优化完成后查看最优解和结果文件</li>
+</ol>
+
+<h2>三、结果文件</h2>
+<p>优化结果保存在 <code>optim_results/</code> 目录下：</p>
+<ul>
+<li><b>evaluations.jsonl</b>：所有评估记录（参数+目标值）</li>
+<li><b>pareto_solutions.json</b>：帕累托最优解集</li>
+<li><b>figures/</b>：可视化图表</li>
+<li><b>logs/</b>：运行日志</li>
+</ul>
+
+<h2>四、常见问题</h2>
+
+<h3>Q1: HFSS连接失败？</h3>
+<ul>
+<li>确保HFSS已打开并加载项目</li>
+<li>检查项目路径是否正确</li>
+<li>确认设计名称与HFSS中一致</li>
+</ul>
+
+<h3>Q2: 代理模型不训练？</h3>
+<ul>
+<li>确保评估次数达到最小样本数（默认50）</li>
+<li>检查目标值是否有异常（1000或999）</li>
+</ul>
+
+<h3>Q3: 仿真结果异常？</h3>
+<ul>
+<li>检查HFSS模型是否有错误</li>
+<li>验证变量范围是否合理</li>
+<li>查看日志文件中的详细错误信息</li>
+</ul>
+
+<h3>Q4: 如何加速优化？</h3>
+<ul>
+<li>启用代理模型减少真实仿真次数</li>
+<li>适当减小种群规模或迭代次数</li>
+<li>使用早停功能达到目标后立即停止</li>
+</ul>
+
+<h2>五、代理模型配置</h2>
+
+<h3>模型类型</h3>
+<table>
+<tr><th>模型</th><th>适用场景</th><th>特点</th></tr>
+<tr><td>GPflow-SVGP</td><td>通用</td><td>高斯过程，支持不确定性估计</td></tr>
+<tr><td>GP</td><td>小样本</td><td>高斯过程，计算开销大</td></tr>
+<tr><td>RF</td><td>快速</td><td>随机森林，适合大规模数据</td></tr>
+<tr><td>GB</td><td>梯度优化</td><td>梯度提升，预测精度高</td></tr>
+</table>
+
+<h3>不确定性阈值</h3>
+<p>当预测不确定性高于此阈值时，进行真实HFSS仿真。</p>
+<ul>
+<li>较低阈值(0.05-0.1)：更保守，更频繁仿真</li>
+<li>较高阈值(0.2-0.3)：更激进，更多依赖代理预测</li>
+</ul>
+
+<hr>
+<p class="version">版本: V2026.4 | 更新日期: 2026年4月</p>
+"""
+        
+        help_text.setHtml(help_content)
+        layout.addWidget(help_text)
+        
+        return widget
+
     def update_estimate(self):
         algo = self.algorithm_combo.currentText()
         pop = self.population_spin.value()
@@ -1429,7 +1604,9 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
                 'peak_gain': 'peakGain',
                 's_db': 'S参数',
                 's_mag': 'S参数',
-                's_phase': 'S参数'
+                's_phase': 'S参数',
+                'z_real': 'Z实部',
+                'z_imag': 'Z虚部'
             }
             internal_type = obj.get('type', 'formula')
             gui_type = internal_to_gui.get(internal_type, 'S参数')
@@ -1704,12 +1881,18 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         for row in range(self.var_table.rowCount()):
             name_item = self.var_table.item(row, 0)
             if name_item and name_item.text():
+                min_text = self.var_table.item(row, 1).text() if self.var_table.item(row, 1) else '0'
+                max_text = self.var_table.item(row, 2).text() if self.var_table.item(row, 2) else '1'
+                
+                def parse_bound(text):
+                    try:
+                        return float(text)
+                    except ValueError:
+                        return text
+                
                 variables.append({
                     'name': name_item.text(),
-                    'bounds': [
-                        float(self.var_table.item(row, 1).text()) if self.var_table.item(row, 1) else 0,
-                        float(self.var_table.item(row, 2).text()) if self.var_table.item(row, 2) else 1
-                    ],
+                    'bounds': [parse_bound(min_text), parse_bound(max_text)],
                     'unit': self.var_table.item(row, 3).text() if self.var_table.item(row, 3) else 'mm'
                 })
 
@@ -1718,7 +1901,9 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
         type_to_internal = {
             'S参数': 'formula',
             'Gain': 'gain',
-            'peakGain': 'peak_gain'
+            'peakGain': 'peak_gain',
+            'Z实部': 'z_real',
+            'Z虚部': 'z_imag'
         }
         for row in range(self.obj_table.rowCount()):
             name_item = self.obj_table.item(row, 0)

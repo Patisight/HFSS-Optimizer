@@ -54,6 +54,15 @@ class NSGA2(BaseOptimizer):
                 objectives.append([1000] * len(self.objectives))
                 all_results.append(None)
         
+        # 初始化后早停检查
+        if self.stop_when_goal_met:
+            goals_count = self.count_solutions_meeting_goals(all_results)
+            print(f"[INFO] Goals check: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+            if goals_count >= self.n_solutions_to_stop:
+                print(f"\n[INFO] Early stop after initialization: {goals_count} solutions meet goals")
+                fronts = self.fast_non_dominated_sort(population, objectives)
+                return self._extract_pareto_params(fronts[0], population, all_results)
+        
         # 主循环
         for gen in range(self.n_generations):
             print(f"\n[Generation {gen + 1}/{self.n_generations}]")
@@ -129,21 +138,61 @@ class NSGA2(BaseOptimizer):
         if cached is not None:
             return cached
         
+        # 检查变量约束
+        if self._has_formulas:
+            params_dict = {v['name']: params[i] for i, v in enumerate(self.variables)}
+            valid, msg = self.constraint_mgr.check_constraints(params_dict)
+            if not valid:
+                print(f"[CONSTRAINT VIOLATION] {msg} -> returning penalty")
+                penalty = self.get_penalty_objectives()
+                result = tuple(penalty)
+                self._add_to_cache(params, result)
+                self.evaluation_count += 1
+                return result
+        
         self.evaluation_count += 1
         self.real_evaluation_count += 1
         
-        # 设置变量
-        for i, var in enumerate(self.variables):
-            evaluator.hfss.set_variable(var['name'], params[i], var.get('unit', 'mm'))
+        # 设置变量 - 持续重试直到成功
+        while True:
+            try:
+                for i, var in enumerate(self.variables):
+                    evaluator.hfss.set_variable(var['name'], params[i], var.get('unit', 'mm'))
+                break
+            except RuntimeError as e:
+                print(f"[ERROR] Failed to set variable: {e}")
+                print(f"[INFO] HFSS disconnected, waiting to reconnect...")
+                import time
+                time.sleep(10)
+                continue
         
-        # 运行仿真
-        if not evaluator.hfss.analyze(force=True):
-            print(f"[WARN] Analysis failed for params: {params}")
-            return None
+        # 分析 - 持续重试直到成功
+        while True:
+            try:
+                if evaluator.hfss.analyze(force=True):
+                    break
+                print(f"[WARN] Analysis returned False, retrying...")
+            except Exception as e:
+                print(f"[ERROR] Analysis failed: {e}")
+            print(f"[INFO] HFSS disconnected, waiting to reconnect...")
+            import time
+            time.sleep(10)
+            continue
         
         # 评估目标
         evaluator.clear_cache()
-        result = evaluator.evaluate_all(params)
+        
+        # 获取目标值 - 持续重试直到成功
+        while True:
+            try:
+                result = evaluator.evaluate_all(params)
+                break
+            except RuntimeError as e:
+                print(f"[ERROR] Evaluation failed: {e}")
+                print(f"[INFO] HFSS disconnected, waiting to reconnect...")
+                import time
+                time.sleep(10)
+                continue
         
         # 添加到缓存
         self._add_to_cache(params, result)
