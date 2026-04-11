@@ -7,6 +7,54 @@ import time
 import numpy as np
 import pandas as pd
 from typing import Optional, Dict, List, Tuple, Any
+from loguru import logger
+
+# pyaedt 兼容层：支持新旧版本
+try:
+    import pyaedt
+    PYAEDT_NEW_API = False
+except ImportError:
+    # 新版 pyaedt (0.25+) 使用新的导入方式
+    from ansys.aedt.core import Hfss as _Hfss
+    from ansys.aedt.core import Desktop as _Desktop
+    import ansys.aedt.core as pyaedt
+    PYAEDT_NEW_API = True
+
+
+def _get_solution_data_value(sol_data, expression: str, data_type: str = "real"):
+    """
+    兼容新旧 pyaedt API 获取 SolutionData 数据
+    
+    Args:
+        sol_data: SolutionData 对象
+        expression: 表达式名称
+        data_type: 数据类型 - "real", "imag", "mag", "db"
+    
+    Returns:
+        数据数组或 None
+    """
+    try:
+        if hasattr(sol_data, 'get_expression_data'):
+            _, data = sol_data.get_expression_data(expression, formula=data_type)
+            return data
+        elif data_type in ("real", "mag"):
+            return sol_data.data_real(expression)
+        elif data_type == "imag":
+            if hasattr(sol_data, 'data_imag'):
+                return sol_data.data_imag(expression)
+            else:
+                _, data = sol_data.get_expression_data(expression, formula="imag")
+                return data
+        elif data_type == "db":
+            if hasattr(sol_data, 'data_real'):
+                return sol_data.data_real(expression)
+            else:
+                _, data = sol_data.get_expression_data(expression, formula="db20")
+                return data
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to get solution data: {e}")
+        return None
 
 
 class HFSSController:
@@ -41,20 +89,19 @@ class HFSSController:
         Args:
             force_new: 是否强制启动新的 HFSS 实例
         """
-        import pyaedt
-        
-        print(f"[INFO] Connecting to HFSS...")
-        print(f"  Project: {self.project_path}")
-        print(f"  Design: {self.design_name}")
+        logger.info(f"[INFO] Connecting to HFSS...")
+        logger.info(f"  Project: {self.project_path}")
+        logger.info(f"  Design: {self.design_name}")
+        logger.info(f"  PyAEDT API: {'new' if PYAEDT_NEW_API else 'legacy'}")
         
         # 检查项目文件是否存在
         if not os.path.exists(self.project_path):
-            print(f"[ERROR] Project file not found: {self.project_path}")
+            logger.info(f"[ERROR] Project file not found: {self.project_path}")
             return False
         
         # 如果强制启动新实例，先关闭现有连接
         if force_new:
-            print("[INFO] Force new HFSS instance requested...")
+            logger.info(" Force new HFSS instance requested...")
             try:
                 desktop = pyaedt.Desktop()
                 desktop.close_desktop()
@@ -65,7 +112,7 @@ class HFSSController:
         # 安全删除锁文件（仅在无 HFSS 进程运行时）
         hfss_running = self._is_hfss_running()
         if not hfss_running or force_new:
-            print("[INFO] No HFSS process detected, checking for stale locks...")
+            logger.info(" No HFSS process detected, checking for stale locks...")
             lock_patterns = [
                 self.project_path.replace('.aedt', '.aedt.lock'),
                 self.project_path.replace('.aedt', '.aedtresults') + '\\.lock',
@@ -75,64 +122,75 @@ class HFSSController:
                 if os.path.exists(lock_file):
                     try:
                         os.remove(lock_file)
-                        print(f"  [OK] Removed stale lock: {lock_file}")
+                        logger.info(f"  [OK] Removed stale lock: {lock_file}")
                     except Exception as e:
-                        print(f"  [WARN] Cannot remove lock: {e}")
+                        logger.info(f"  [WARN] Cannot remove lock: {e}")
         else:
-            print("[INFO] HFSS process detected, will try to connect to existing instance")
+            logger.info(" HFSS process detected, will try to connect to existing instance")
         
         # 尝试连接到 HFSS
         connection_errors = []
+        hfss_running = self._is_hfss_running()
         
         for attempt in range(3):
             try:
-                if force_new or attempt > 0:
-                    # 强制启动新实例或重试时启动新实例
-                    print(f"[INFO] Starting new HFSS instance (attempt {attempt+1})...")
-                    self.hfss = pyaedt.Hfss(
-                        project=self.project_path,
-                        design=self.design_name,
-                        version=None,
-                        new_desktop=True,
-                        close_on_exit=True,
-                    )
-                else:
-                    # 先尝试连接现有桌面
-                    self.hfss = pyaedt.Hfss(
-                        project=self.project_path,
-                        design=self.design_name,
-                        version=None,
-                        new_desktop=False,
-                        close_on_exit=False,
-                    )
-                    print("[OK] Connected to existing HFSS instance")
+                if attempt > 0:
+                    logger.info(f"[INFO] Retry attempt {attempt+1}/3...")
+                    time.sleep(3)
+                
+                logger.info(f"[INFO] Connecting to HFSS (attempt {attempt+1})...")
+                
+                # 如果检测到HFSS已运行，先尝试连接已有实例
+                # 第一次尝试：连接已有实例
+                # 后续尝试：启动新实例
+                use_existing = hfss_running and attempt == 0
+                
+                # 第三次尝试：强制移除锁文件
+                remove_lock = (attempt == 2)
+                
+                self.hfss = pyaedt.Hfss(
+                    project=self.project_path,
+                    design=self.design_name,
+                    version=None,
+                    new_desktop=not use_existing,
+                    close_on_exit=True,
+                    remove_lock=remove_lock,
+                )
                 
                 # 验证连接
                 _ = self.hfss.project_name
                 _ = self.hfss.design_name
                 
                 self._connected = True
-                print("[OK] Connected to HFSS")
+                logger.success(" Connected to HFSS")
                 return True
                 
             except Exception as e:
                 err_msg = str(e)
                 connection_errors.append(err_msg)
-                print(f"[WARN] Connection attempt {attempt+1}/3 failed: {err_msg}")
+                logger.info(f"[WARN] Connection attempt {attempt+1}/3 failed: {err_msg}")
+                
+                # 检查是否是项目锁定问题
+                if 'locked' in err_msg.lower():
+                    if attempt < 2:
+                        logger.info(" Project is locked. Will try to remove lock on next attempt...")
+                    else:
+                        logger.error(" Project is locked by another HFSS instance!")
+                        logger.info(" Please close HFSS and try again.")
                 
                 # 检查是否是项目文件错误
                 if '有错误' in err_msg or 'error' in err_msg.lower():
-                    print("[ERROR] Project file appears to have errors")
-                    print("[INFO] Try opening the project in HFSS manually to repair it")
+                    logger.error(" Project file appears to have errors")
+                    logger.info(" Try opening the project in HFSS manually to repair it")
                 
                 if attempt < 2:
-                    print(f"[INFO] Waiting 5s before retry...")
+                    logger.info(f"[INFO] Waiting 5s before retry...")
                     time.sleep(5)
         
         # 所有尝试都失败了
-        print(f"[ERROR] All connection methods failed:")
+        logger.info(f"[ERROR] All connection methods failed:")
         for i, err in enumerate(connection_errors):
-            print(f"  Attempt {i+1}: {err}")
+            logger.info(f"  Attempt {i+1}: {err}")
         return False
     
     @staticmethod
@@ -147,7 +205,7 @@ class HFSSController:
                     capture_output=True, text=True, timeout=5
                 )
                 if proc_name in result.stdout:
-                    print(f"[INFO] Found HFSS process: {proc_name}")
+                    logger.info(f"[INFO] Found HFSS process: {proc_name}")
                     return True
             return False
         except Exception:
@@ -168,7 +226,7 @@ class HFSSController:
             _ = self.hfss.project_name
             return True
         except Exception as e:
-            print(f"[WARN] HFSS connection lost: {e}")
+            logger.info(f"[WARN] HFSS connection lost: {e}")
             return False
     
     def _reconnect(self) -> bool:
@@ -181,34 +239,33 @@ class HFSSController:
         reconnect_count = 0
         while True:
             reconnect_count += 1
-            print(f"[INFO] Attempting to reconnect to HFSS (attempt {reconnect_count})...")
+            logger.info(f"[INFO] Attempting to reconnect to HFSS (attempt {reconnect_count})...")
             
             # 强制关闭旧连接
             self._force_close()
             
             # 等待让 HFSS 准备好
             wait_time = min(10 + reconnect_count * 2, 30)  # 逐渐增加等待时间，最多30秒
-            print(f"[INFO] Waiting {wait_time}s before reconnect...")
+            logger.info(f"[INFO] Waiting {wait_time}s before reconnect...")
             time.sleep(wait_time)
             
             # 强制启动新实例重新连接
             success = self.connect(force_new=True)
             if success:
-                print(f"[OK] Reconnected to HFSS successfully on attempt {reconnect_count}")
+                logger.info(f"[OK] Reconnected to HFSS successfully on attempt {reconnect_count}")
                 self._reconnect_attempts = 0  # 重置重连计数
                 return True
             
-            print(f"[WARN] Reconnection failed, will retry...")
+            logger.info(f"[WARN] Reconnection failed, will retry...")
     
     def _force_close(self):
         """强制关闭 HFSS 连接"""
-        print(f"[INFO] Force closing HFSS connection...")
+        logger.info(f"[INFO] Force closing HFSS connection...")
         self._connected = False
         self.hfss = None
         
         # 尝试关闭桌面
         try:
-            import pyaedt
             # 尝试获取桌面并关闭
             desktop = pyaedt.Desktop()
             desktop.close_desktop()
@@ -226,7 +283,7 @@ class HFSSController:
                     if os.path.exists(lock_file):
                         try:
                             os.remove(lock_file)
-                            print(f"  [OK] Removed lock: {lock_file}")
+                            logger.info(f"  [OK] Removed lock: {lock_file}")
                         except Exception:
                             pass
         except Exception:
@@ -240,9 +297,9 @@ class HFSSController:
             连接是否正常
         """
         while not self._check_connection():
-            print("[WARN] HFSS connection lost, will attempt to reconnect...")
+            logger.warning(" HFSS connection lost, will attempt to reconnect...")
             if not self._reconnect():
-                print("[WARN] Reconnection failed, will retry in 10s...")
+                logger.warning(" Reconnection failed, will retry in 10s...")
                 time.sleep(10)
                 continue
             return True
@@ -252,10 +309,10 @@ class HFSSController:
         """关闭 HFSS 连接"""
         if self.hfss:
             try:
-                print("[INFO] Closing HFSS...")
+                logger.info(" Closing HFSS...")
                 self.hfss.close_desktop()
                 self.hfss = None
-                print("[OK] Closed")
+                logger.success(" Closed")
             except Exception:
                 pass
         self._connected = False
@@ -287,7 +344,7 @@ class HFSSController:
                     raise RuntimeError("Cannot reconnect to HFSS")
                 
                 self.hfss.variable_manager.set_variable(name, expression=expr)
-                print(f"[OK] {name} = {value:.3f}{unit}")
+                logger.info(f"[OK] {name} = {value:.3f}{unit}")
                 return
             except Exception as e:
                 last_error = e
@@ -300,16 +357,16 @@ class HFSSController:
                 ])
                 
                 if is_connection_error:
-                    print(f"[WARN] HFSS connection error on set_variable ({attempt+1}/3): {e}")
+                    logger.info(f"[WARN] HFSS connection error on set_variable ({attempt+1}/3): {e}")
                     # 标记需要重连
                     self._connected = False
                     if attempt < 2:
-                        print(f"[INFO] Attempting to reconnect...")
+                        logger.info(f"[INFO] Attempting to reconnect...")
                         if self._reconnect():
                             continue
                         time.sleep(3)
                 else:
-                    print(f"[WARN] Set variable {name} ({attempt+1}/3): {e}")
+                    logger.info(f"[WARN] Set variable {name} ({attempt+1}/3): {e}")
                     if attempt < 2:
                         time.sleep(1)
         
@@ -333,7 +390,7 @@ class HFSSController:
             try:
                 # 确保连接正常
                 if not self.ensure_connection():
-                    print(f"[ERROR] Cannot reconnect to HFSS (attempt {attempt+1}/3)")
+                    logger.info(f"[ERROR] Cannot reconnect to HFSS (attempt {attempt+1}/3)")
                     self._connected = False
                     if attempt < 2:
                         time.sleep(3)
@@ -343,13 +400,13 @@ class HFSSController:
                 self._ensure_far_field_setup()
                 
                 if force:
-                    print(f"[INFO] Force re-analyzing {self.setup_name}...")
+                    logger.info(f"[INFO] Force re-analyzing {self.setup_name}...")
                     try:
                         self.hfss.odesign.DeleteSetupData(self.setup_name)
                     except Exception:
                         pass
                 else:
-                    print(f"[INFO] Analyzing {self.setup_name}...")
+                    logger.info(f"[INFO] Analyzing {self.setup_name}...")
                 
                 t0 = time.time()
                 self.hfss.analyze_setup(self.setup_name)
@@ -357,17 +414,17 @@ class HFSSController:
                 
                 # 验证分析是否真正执行（HFSS崩溃时可能0秒完成）
                 if elapsed < 1.0:
-                    print(f"[WARN] Analysis suspiciously fast ({elapsed:.1f}s), may have failed silently")
+                    logger.info(f"[WARN] Analysis suspiciously fast ({elapsed:.1f}s), may have failed silently")
                     # 尝试通过检查项目状态来验证
                     if not self._verify_analysis_ran():
-                        print(f"[WARN] Analysis verification failed, retrying...")
+                        logger.info(f"[WARN] Analysis verification failed, retrying...")
                         self._connected = False
                         if attempt < 2:
                             time.sleep(3)
                             continue
                         return False
                 
-                print(f"[OK] Analysis done ({elapsed:.1f}s)")
+                logger.info(f"[OK] Analysis done ({elapsed:.1f}s)")
                 return True
                 
             except Exception as e:
@@ -382,20 +439,20 @@ class HFSSController:
                 ])
                 
                 if is_connection_error:
-                    print(f"[WARN] HFSS connection error on analyze ({attempt+1}/3): {e}")
+                    logger.info(f"[WARN] HFSS connection error on analyze ({attempt+1}/3): {e}")
                     self._connected = False
                     if attempt < 2:
-                        print(f"[INFO] Attempting to reconnect...")
+                        logger.info(f"[INFO] Attempting to reconnect...")
                         if self._reconnect():
-                            print(f"[INFO] Reconnected, retrying analysis...")
+                            logger.info(f"[INFO] Reconnected, retrying analysis...")
                             continue
                         time.sleep(5)
                 else:
-                    print(f"[ERROR] Analysis failed ({attempt+1}/3): {e}")
+                    logger.info(f"[ERROR] Analysis failed ({attempt+1}/3): {e}")
                     if attempt < 2:
                         time.sleep(2)
         
-        print(f"[ERROR] Analysis failed after 3 attempts: {last_error}")
+        logger.info(f"[ERROR] Analysis failed after 3 attempts: {last_error}")
         return False
     
     def _verify_analysis_ran(self) -> bool:
@@ -447,12 +504,12 @@ class HFSSController:
                             btype = boundary.GetPropValue('Type')
                             if 'Radiation' in str(btype) or 'PML' in str(btype):
                                 result['has_radiation_boundary'] = True
-                                print(f"[INFO] Found radiation boundary: {name}")
+                                logger.info(f"[INFO] Found radiation boundary: {name}")
                                 break
                         except Exception:
                             pass
             except Exception as e:
-                print(f"[DEBUG] Check radiation boundary: {e}")
+                logger.info(f"[DEBUG] Check radiation boundary: {e}")
             
             # 2. 检查远场球体
             try:
@@ -462,9 +519,9 @@ class HFSSController:
                     if ff_setups:
                         result['has_far_field_sphere'] = True
                         result['far_field_sphere_name'] = '3D' if '3D' in ff_setups else ff_setups[0]
-                        print(f"[INFO] Found far field sphere: {result['far_field_sphere_name']}")
+                        logger.info(f"[INFO] Found far field sphere: {result['far_field_sphere_name']}")
             except Exception as e:
-                print(f"[DEBUG] Check far field sphere: {e}")
+                logger.info(f"[DEBUG] Check far field sphere: {e}")
             
             # 3. 检查是否关联到 Setup
             try:
@@ -472,9 +529,9 @@ class HFSSController:
                 ff_index = setup.props.get('InfiniteSphereSetup', -1)
                 if ff_index != -1:
                     result['is_linked_to_setup'] = True
-                    print(f"[INFO] Far field linked to Setup (index {ff_index})")
+                    logger.info(f"[INFO] Far field linked to Setup (index {ff_index})")
             except Exception as e:
-                print(f"[DEBUG] Check setup link: {e}")
+                logger.info(f"[DEBUG] Check setup link: {e}")
             
             # 4. 综合判断能否获取增益
             result['can_get_gain'] = (
@@ -498,11 +555,11 @@ class HFSSController:
             是否成功创建
         """
         if not self._connected:
-            print("[ERROR] HFSS 未连接")
+            logger.error(" HFSS 未连接")
             return False
         
         try:
-            print(f"[INFO] Creating far field sphere '{sphere_name}'...")
+            logger.info(f"[INFO] Creating far field sphere '{sphere_name}'...")
             
             # 检查是否已存在
             try:
@@ -510,7 +567,7 @@ class HFSSController:
                 if radiation:
                     existing = list(radiation.GetChildNames())
                     if sphere_name in existing:
-                        print(f"[INFO] Far field sphere '{sphere_name}' already exists")
+                        logger.info(f"[INFO] Far field sphere '{sphere_name}' already exists")
                         return True
             except Exception:
                 pass
@@ -527,10 +584,10 @@ class HFSSController:
                     phi_stop=360,
                     phi_step=10
                 )
-                print(f"[OK] Created far field sphere '{sphere_name}'")
+                logger.info(f"[OK] Created far field sphere '{sphere_name}'")
                 return True
             except Exception as e:
-                print(f"[DEBUG] pyaedt method failed: {e}")
+                logger.info(f"[DEBUG] pyaedt method failed: {e}")
             
             # 方法2: 使用原生脚本
             try:
@@ -548,15 +605,15 @@ Set oDesign = oProject.GetActiveDesign()
 oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiationSurface:=", false)
 '''
                 self.hfss._odesign.ExecuteScript(script)
-                print(f"[OK] Created far field sphere via script")
+                logger.info(f"[OK] Created far field sphere via script")
                 return True
             except Exception as e:
-                print(f"[DEBUG] Script method failed: {e}")
+                logger.info(f"[DEBUG] Script method failed: {e}")
             
             return False
             
         except Exception as e:
-            print(f"[ERROR] Create far field setup failed: {e}")
+            logger.info(f"[ERROR] Create far field setup failed: {e}")
             return False
     
     def ensure_far_field_for_gain(self) -> bool:
@@ -569,13 +626,13 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
         if not self._connected:
             return False
         
-        print("\n[INFO] Checking far field setup for gain calculation...")
+        logger.info("\n[INFO] Checking far field setup for gain calculation...")
         
         # 检查当前状态
         status = self.check_far_field_setup()
         
         if status['can_get_gain']:
-            print("[OK] Far field setup ready for gain calculation")
+            logger.success(" Far field setup ready for gain calculation")
             return True
         
         # 尝试修复
@@ -585,26 +642,26 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
         if not status['has_far_field_sphere']:
             # 尝试创建远场球体
             if self.create_far_field_setup():
-                print("[OK] Created far field sphere")
+                logger.success(" Created far field sphere")
             else:
                 issues.append("缺少远场球体 (Far Field Sphere)")
         if status['has_far_field_sphere'] and not status['is_linked_to_setup']:
             # 尝试关联到 Setup
             if self._ensure_far_field_setup():
-                print("[OK] Linked far field to Setup")
+                logger.success(" Linked far field to Setup")
             else:
                 issues.append("远场球体未关联到 Setup")
         
         if issues:
-            print("\n" + "=" * 60)
-            print("[ERROR] 无法获取增益，缺少以下设置:")
+            logger.info("\n" + "=" * 60)
+            logger.error(" 无法获取增益，缺少以下设置:")
             for issue in issues:
-                print(f"  - {issue}")
-            print("\n请在 HFSS 中手动添加:")
-            print("  1. 创建辐射边界: Draw -> Create Radiation Boundary")
-            print("  2. 创建远场球体: Radiation -> Insert Far Field Setup -> Infinite Sphere")
-            print("  3. 在 Setup 中关联远场球体: Setup -> Advanced -> Far Field Sphere")
-            print("=" * 60)
+                logger.info(f"  - {issue}")
+            logger.info("\n请在 HFSS 中手动添加:")
+            logger.info("  1. 创建辐射边界: Draw -> Create Radiation Boundary")
+            logger.info("  2. 创建远场球体: Radiation -> Insert Far Field Setup -> Infinite Sphere")
+            logger.info("  3. 在 Setup 中关联远场球体: Setup -> Advanced -> Far Field Sphere")
+            logger.info("=" * 60)
             return False
         
         # 再次检查
@@ -618,7 +675,7 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
             current_ff = setup.props.get('InfiniteSphereSetup', -1)
             
             if current_ff == -1:
-                print("[INFO] Linking far field sphere to Setup...")
+                logger.info(" Linking far field sphere to Setup...")
                 
                 # 获取可用的远场设置
                 ff_setups = list(self.hfss._odesign.GetChildObject('Radiation').GetChildNames())
@@ -630,20 +687,20 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                     
                     # 设置 Setup 使用这个远场球面
                     setup.props['InfiniteSphereSetup'] = ff_index
-                    print(f"[OK] Linked far field '{ff_name}' (index {ff_index}) to {self.setup_name}")
+                    logger.info(f"[OK] Linked far field '{ff_name}' (index {ff_index}) to {self.setup_name}")
                     
                     # 更新 setup
                     setup.update()
                     return True
                 else:
-                    print("[WARN] No far field sphere found")
+                    logger.warning(" No far field sphere found")
                     return False
             else:
-                print(f"[INFO] Far field already linked (index {current_ff})")
+                logger.info(f"[INFO] Far field already linked (index {current_ff})")
                 return True
                 
         except Exception as e:
-            print(f"[WARN] Could not link far field: {e}")
+            logger.info(f"[WARN] Could not link far field: {e}")
             return False
     
     def ensure_setup_frequency(self, target_freq_ghz: float) -> bool:
@@ -672,16 +729,16 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
             else:
                 current_freq_ghz = float(current_freq)
             
-            print(f"[INFO] Current Setup frequency: {current_freq_ghz:.2f} GHz")
-            print(f"[INFO] Target frequency: {target_freq_ghz:.2f} GHz")
+            logger.info(f"[INFO] Current Setup frequency: {current_freq_ghz:.2f} GHz")
+            logger.info(f"[INFO] Target frequency: {target_freq_ghz:.2f} GHz")
             
             # 检查是否匹配
             if abs(current_freq_ghz - target_freq_ghz) < 0.01:  # 10 MHz tolerance
-                print(f"[OK] Setup frequency matches target")
+                logger.info(f"[OK] Setup frequency matches target")
                 return True
             
             # 需要修改 Setup 频率
-            print(f"[INFO] Updating Setup frequency to {target_freq_ghz:.2f} GHz...")
+            logger.info(f"[INFO] Updating Setup frequency to {target_freq_ghz:.2f} GHz...")
             
             # 设置新频率
             setup.props['Frequency'] = f"{target_freq_ghz:.4f}GHz"
@@ -690,13 +747,13 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
             # 保存项目
             self.hfss.save_project()
             
-            print(f"[OK] Setup frequency updated to {target_freq_ghz:.2f} GHz")
-            print(f"[INFO] Note: This will require re-simulation")
+            logger.info(f"[OK] Setup frequency updated to {target_freq_ghz:.2f} GHz")
+            logger.info(f"[INFO] Note: This will require re-simulation")
             
             return True
             
         except Exception as e:
-            print(f"[ERROR] Failed to update Setup frequency: {e}")
+            logger.info(f"[ERROR] Failed to update Setup frequency: {e}")
             return False
     
     def _parse_freq_to_ghz(self, freq_str: str) -> float:
@@ -758,13 +815,13 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
         for attempt in range(3):
             try:
                 if not self.ensure_connection():
-                    print(f"[WARN] Cannot reconnect to HFSS for S-params (attempt {attempt+1}/3)")
+                    logger.info(f"[WARN] Cannot reconnect to HFSS for S-params (attempt {attempt+1}/3)")
                     self._connected = False
                     if attempt < 2:
                         time.sleep(3)
                     continue
                 
-                print("[INFO] Getting S-parameters...")
+                logger.info(" Getting S-parameters...")
                 
                 sweep_path = f"{self.setup_name} : {self.sweep_name}"
                 
@@ -784,8 +841,8 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 except Exception:
                     pass
 
-                if sol_data is None or not hasattr(sol_data, 'data_real'):
-                    print("[WARN] No solution data")
+                if sol_data is None:
+                    logger.warning(" No solution data")
                     return None
                 
                 try:
@@ -802,9 +859,11 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 result = {'freq': freq, 'ports': {}}
                 
                 for (i, j) in ports:
-                    s_db = sol_data.data_real(f"dB(S({i},{j}))")
-                    s_real = sol_data.data_real(f"S({i},{j})")
-                    s_imag = sol_data.data_imag(f"S({i},{j})")
+                    s_db = _get_solution_data_value(sol_data, f"dB(S({i},{j}))", "real")
+                    if s_db is None:
+                        s_db = _get_solution_data_value(sol_data, f"S({i},{j})", "db")
+                    s_real = _get_solution_data_value(sol_data, f"S({i},{j})", "real")
+                    s_imag = _get_solution_data_value(sol_data, f"S({i},{j})", "imag")
                     
                     if s_db is None:
                         continue
@@ -828,12 +887,12 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                         'real': s_real, 'imag': s_imag,
                     }
                 
-                print(f"[OK] S-params: {len(freq)} freq points, {freq.min():.2f}-{freq.max():.2f} GHz")
+                logger.info(f"[OK] S-params: {len(freq)} freq points, {freq.min():.2f}-{freq.max():.2f} GHz")
                 return result
                 
             except Exception as e:
                 err_str = str(e).lower()
-                print(f"[WARN] Get S-params failed (attempt {attempt+1}/3): {e}")
+                logger.info(f"[WARN] Get S-params failed (attempt {attempt+1}/3): {e}")
                 
                 is_connection_error = any(x in err_str for x in [
                     'nonetype', 'bool', 'object is not iterable',
@@ -850,9 +909,9 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 # 不是最后一次重试，尝试重连后继续
                 if is_connection_error:
                     self._connected = False
-                    print(f"[INFO] Attempting to reconnect...")
+                    logger.info(f"[INFO] Attempting to reconnect...")
                     if self._reconnect():
-                        print(f"[INFO] Reconnected, retrying get_s_parameters...")
+                        logger.info(f"[INFO] Reconnected, retrying get_s_parameters...")
                         continue
                     time.sleep(5)
                 
@@ -875,11 +934,11 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
             return None
         
         if not self.ensure_connection():
-            print("[WARN] Cannot reconnect to HFSS for gain")
+            logger.warning(" Cannot reconnect to HFSS for gain")
             return None
         
         try:
-            print(f"[INFO] Getting PeakGain...")
+            logger.info(f"[INFO] Getting PeakGain...")
             
             # 检查远场设置
             ff_setups = []
@@ -889,8 +948,8 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 pass
             
             if not ff_setups:
-                print("[ERROR] No far field setup found!")
-                print("  请在 HFSS 中添加远场球体: Radiation -> Insert Far Field Setup -> Infinite Sphere")
+                logger.error(" No far field setup found!")
+                logger.info("  请在 HFSS 中添加远场球体: Radiation -> Insert Far Field Setup -> Infinite Sphere")
                 return None
             
             sphere_name = '3D' if '3D' in ff_setups else (ff_setups[0] if ff_setups else None)
@@ -904,14 +963,14 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 
                 # 检查返回值是否有效
                 if ap_report is None or isinstance(ap_report, bool):
-                    print(f"[DEBUG] antenna_parameters returned: {type(ap_report).__name__}")
+                    logger.info(f"[DEBUG] antenna_parameters returned: {type(ap_report).__name__}")
                     raise Exception("antenna_parameters API returned invalid type")
                 
                 if sphere_name:
                     try:
                         ap_report.far_field_sphere = sphere_name
                     except Exception as e:
-                        print(f"[DEBUG] Could not set far_field_sphere: {e}")
+                        logger.info(f"[DEBUG] Could not set far_field_sphere: {e}")
                 
                 ap_report.expressions = ["dB(PeakGain)", "dB(PeakRealizedGain)"]
                 ap_report.create()
@@ -926,20 +985,20 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                 
                 if sol_data:
                     # dB(PeakGain)
-                    gain_data = sol_data.data_real("dB(PeakGain)")
+                    gain_data = _get_solution_data_value(sol_data, "dB(PeakGain)", "real")
                     if gain_data is not None and len(gain_data) > 0:
                         peak_gain = float(np.max(np.array(gain_data).flatten()))
-                        print(f"[OK] PeakGain: {peak_gain:.2f} dB")
+                        logger.info(f"[OK] PeakGain: {peak_gain:.2f} dB")
                         return peak_gain
                     
                     # dB(PeakRealizedGain)
-                    gain_data = sol_data.data_real("dB(PeakRealizedGain)")
+                    gain_data = _get_solution_data_value(sol_data, "dB(PeakRealizedGain)", "real")
                     if gain_data is not None and len(gain_data) > 0:
                         peak_gain = float(np.max(np.array(gain_data).flatten()))
-                        print(f"[OK] PeakRealizedGain: {peak_gain:.2f} dB")
+                        logger.info(f"[OK] PeakRealizedGain: {peak_gain:.2f} dB")
                         return peak_gain
             except Exception as e:
-                print(f"[DEBUG] dB(PeakGain) failed: {e}")
+                logger.info(f"[DEBUG] dB(PeakGain) failed: {e}")
             
             # 方法2: 获取线性值然后转换为 dB
             try:
@@ -966,30 +1025,30 @@ oDesign.InsertInfiniteSphereSetup Array("NAME:{sphere_name}", "UseCustomRadiatio
                     pass
 
                 if sol_data:
-                    gain_data = sol_data.data_real("PeakGain")
+                    gain_data = _get_solution_data_value(sol_data, "PeakGain", "real")
                     if gain_data is not None and len(gain_data) > 0:
                         # 转换为 dB
                         gain_linear = float(np.max(np.array(gain_data).flatten()))
                         peak_gain = 10 * np.log10(gain_linear) if gain_linear > 0 else -np.inf
-                        print(f"[OK] PeakGain: {peak_gain:.2f} dB (from linear {gain_linear:.2f})")
+                        logger.info(f"[OK] PeakGain: {peak_gain:.2f} dB (from linear {gain_linear:.2f})")
                         return peak_gain
             except Exception as e:
-                print(f"[DEBUG] PeakGain (linear) failed: {e}")
+                logger.info(f"[DEBUG] PeakGain (linear) failed: {e}")
             
             # 方法3: 使用原生脚本直接获取增益 (备用方案)
             try:
-                print("[INFO] Trying native script method...")
+                logger.info(" Trying native script method...")
                 peak_gain = self._get_gain_via_script(freq_ghz, sphere_name)
                 if peak_gain is not None:
                     return peak_gain
             except Exception as e:
-                print(f"[DEBUG] Script method failed: {e}")
+                logger.info(f"[DEBUG] Script method failed: {e}")
             
-            print(f"[WARN] Could not get PeakGain - check pyaedt version compatibility")
+            logger.info(f"[WARN] Could not get PeakGain - check pyaedt version compatibility")
             return None
             
         except Exception as e:
-            print(f"[ERROR] Get Gain: {e}")
+            logger.info(f"[ERROR] Get Gain: {e}")
             return None
     
     def _get_gain_via_script(self, freq_ghz: float, sphere_name: str = '3D') -> Optional[float]:
@@ -1011,7 +1070,7 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
             return None
             
         except Exception as e:
-            print(f"[DEBUG] Script gain method: {e}")
+            logger.info(f"[DEBUG] Script gain method: {e}")
             return None
     
     def get_z_parameters(self, ports: List[Tuple[int, int]] = None) -> Optional[Dict]:
@@ -1033,13 +1092,13 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
         for attempt in range(3):
             try:
                 if not self.ensure_connection():
-                    print(f"[WARN] Cannot reconnect to HFSS for Z-params (attempt {attempt+1}/3)")
+                    logger.info(f"[WARN] Cannot reconnect to HFSS for Z-params (attempt {attempt+1}/3)")
                     self._connected = False
                     if attempt < 2:
                         time.sleep(3)
                     continue
                 
-                print("[INFO] Getting Z-parameters...")
+                logger.info(" Getting Z-parameters...")
                 
                 sweep_path = f"{self.setup_name} : {self.sweep_name}"
                 
@@ -1059,8 +1118,8 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
                 except Exception:
                     pass
 
-                if sol_data is None or not hasattr(sol_data, 'data_real'):
-                    print("[WARN] No solution data")
+                if sol_data is None:
+                    logger.warning(" No solution data")
                     return None
                 
                 try:
@@ -1077,8 +1136,8 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
                 result = {'freq': freq, 'ports': {}}
                 
                 for (i, j) in ports:
-                    z_real = sol_data.data_real(f"Z({i},{j})")
-                    z_imag = sol_data.data_imag(f"Z({i},{j})")
+                    z_real = _get_solution_data_value(sol_data, f"Z({i},{j})", "real")
+                    z_imag = _get_solution_data_value(sol_data, f"Z({i},{j})", "imag")
                     
                     if z_real is None:
                         continue
@@ -1091,12 +1150,12 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
                         'imag': z_imag,
                     }
                 
-                print(f"[OK] Z-params: {len(freq)} freq points, {freq.min():.2f}-{freq.max():.2f} GHz")
+                logger.info(f"[OK] Z-params: {len(freq)} freq points, {freq.min():.2f}-{freq.max():.2f} GHz")
                 return result
                 
             except Exception as e:
                 err_str = str(e).lower()
-                print(f"[WARN] Get Z-params failed (attempt {attempt+1}/3): {e}")
+                logger.info(f"[WARN] Get Z-params failed (attempt {attempt+1}/3): {e}")
                 
                 is_connection_error = any(x in err_str for x in [
                     'nonetype', 'bool', 'object is not iterable',
@@ -1113,9 +1172,9 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
                 # 不是最后一次重试，尝试重连后继续
                 if is_connection_error:
                     self._connected = False
-                    print(f"[INFO] Attempting to reconnect...")
+                    logger.info(f"[INFO] Attempting to reconnect...")
                     if self._reconnect():
-                        print(f"[INFO] Reconnected, retrying get_z_parameters...")
+                        logger.info(f"[INFO] Reconnected, retrying get_z_parameters...")
                         continue
                     time.sleep(5)
                 
@@ -1134,9 +1193,9 @@ oModule.CreateReport "GainReport", "Antenna Parameters", "Rectangular Plot", "{s
 
         try:
             self.hfss.odesign.DeleteSetupData(self.setup_name)
-            print("[OK] Solution cache cleared")
+            logger.success(" Solution cache cleared")
         except Exception as e:
-            print(f"[WARN] Clear solution cache: {e}")
+            logger.info(f"[WARN] Clear solution cache: {e}")
 
         try:
             script = f'''

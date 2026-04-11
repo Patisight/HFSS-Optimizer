@@ -95,16 +95,16 @@
   ],
   "algorithm": {
     "algorithm": "mopso",
-    "population_size": 20,
-    "n_generations": 20,
+    "population_size": 2,
+    "n_generations": 2,
     "surrogate_type": "gpflow_svgp",
-    "use_surrogate": true,
+    "use_surrogate": false,
     "surrogate_config": {
       "min_samples": 50,
       "uncertainty_threshold": 0.1,
       "model_params": {
         "min_new_samples_to_train": 20,
-        "n_inducing": 100,
+        "n_inducing": 101,
         "kernel_type": "matern52"
       }
     },

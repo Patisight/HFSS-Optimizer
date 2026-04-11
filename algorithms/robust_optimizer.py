@@ -11,6 +11,7 @@
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 import random
+from loguru import logger
 
 from .base import BaseOptimizer
 
@@ -79,7 +80,7 @@ class RobustSurrogateOptimizer(BaseOptimizer):
                 )
                 self.models = [model for _ in range(self.n_objectives)]
                 self._model_type = 'gp'
-                print("[OK] Using Gaussian Process surrogate")
+                logger.success(f"[OK] Using Gaussian Process surrogate")
                 
             elif self.surrogate_type == 'rf':
                 # 随机森林 - 对不连续函数更鲁棒
@@ -96,7 +97,7 @@ class RobustSurrogateOptimizer(BaseOptimizer):
                     ) for _ in range(self.n_objectives)
                 ]
                 self._model_type = 'rf'
-                print("[OK] Using Random Forest surrogate (robust to discontinuity)")
+                logger.success(f"[OK] Using Random Forest surrogate (robust to discontinuity)")
                 
             elif self.surrogate_type == 'dnn':
                 # 深度神经网络 - 强非线性拟合能力
@@ -114,13 +115,13 @@ class RobustSurrogateOptimizer(BaseOptimizer):
                     ) for _ in range(self.n_objectives)
                 ]
                 self._model_type = 'dnn'
-                print("[OK] Using Deep Neural Network surrogate")
+                logger.success(f"[OK] Using Deep Neural Network surrogate")
             
             self._sklearn_available = True
             
         except ImportError:
             self._sklearn_available = False
-            print("[WARN] sklearn not available, using pure NSGA-II")
+            logger.warning(f"[WARN] sklearn not available, using pure NSGA-II")
     
     def train(self, X: np.ndarray, y: np.ndarray):
         """训练代理模型"""
@@ -134,7 +135,7 @@ class RobustSurrogateOptimizer(BaseOptimizer):
             try:
                 model.fit(X, y[:, i])
             except Exception as e:
-                print(f"[WARN] Model {i} training failed: {e}")
+                logger.warning(f"[WARN] Model {i} training failed: {e}")
         
         self.is_trained = True
     
@@ -168,9 +169,9 @@ class RobustSurrogateOptimizer(BaseOptimizer):
         best_results = []
         
         for restart in range(self.n_restarts):
-            print(f"\n{'='*60}")
-            print(f"Restart {restart + 1}/{self.n_restarts}")
-            print(f"{'='*60}")
+            logger.info(f"\n{'='*60}")
+            logger.info(f"Restart {restart + 1}/{self.n_restarts}")
+            logger.info(f"{'='*60}")
             
             # 执行单次优化
             result = self._single_run(evaluator, callback, restart)
@@ -203,7 +204,7 @@ class RobustSurrogateOptimizer(BaseOptimizer):
         # 评估初始样本
         initial_y = []
         for i, x in enumerate(initial_X):
-            print(f"  [{i+1}/{self.initial_samples}] Evaluating initial sample...")
+            logger.info(f"  [{i+1}/{self.initial_samples}] Evaluating initial sample...")
             
             # 设置变量
             for j, var in enumerate(self.variables):
@@ -211,7 +212,7 @@ class RobustSurrogateOptimizer(BaseOptimizer):
             
             # 运行仿真
             if not evaluator.hfss.analyze(force=True):
-                print(f"    [WARN] Analysis failed")
+                logger.info(f"    [WARN] Analysis failed")
                 initial_y.append([1000.0] * self.n_objectives)
             else:
                 evaluator.clear_cache()
@@ -274,7 +275,7 @@ class RobustSurrogateOptimizer(BaseOptimizer):
             if self.stop_when_goal_met:
                 goals_count = self.count_objectives_meeting_goals_from_arrays(objectives)
                 if goals_count >= self.n_solutions_to_stop:
-                    print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                    logger.info(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
                     break
         
         # 提取Pareto前沿
@@ -485,7 +486,7 @@ class AdaptiveOptimizer(BaseOptimizer):
     
     def run(self, evaluator, callback=None):
         """自适应优化 (实现基类抽象方法)"""
-        print("\n[INFO] Detecting problem characteristics...")
+        logger.info(f"\n[INFO] Detecting problem characteristics...")
         
         # 生成测试点
         test_X = self._generate_test_points()
@@ -494,14 +495,14 @@ class AdaptiveOptimizer(BaseOptimizer):
         self._detected_discontinuity = self._detect_discontinuity(evaluator, test_X)
         
         if self._detected_discontinuity:
-            print("[WARN] Discontinuity detected! Using Random Forest surrogate.")
+            logger.warning(f"[WARN] Discontinuity detected! Using Random Forest surrogate.")
             optimizer = RobustSurrogateOptimizer({
                 **self.config,
                 'surrogate_type': 'rf',
                 'mutation_prob': 0.2,  # 更高的变异率
             })
         else:
-            print("[INFO] Function appears smooth. Using Gaussian Process surrogate.")
+            logger.info(f"[INFO] Function appears smooth. Using Gaussian Process surrogate.")
             optimizer = RobustSurrogateOptimizer({
                 **self.config,
                 'surrogate_type': 'gp',

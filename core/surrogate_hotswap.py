@@ -16,7 +16,7 @@
     
     # 检查并执行热替换
     if manager.check_and_swap():
-        print("Model swapped!")
+        logger.info(f"Model swapped!")
     
     # 使用当前模型预测
     mean, std = manager.predict(X, return_std=True)
@@ -106,7 +106,7 @@ class SurrogateManagerWithHotSwap:
         model_state = self.shared_memory.load_model_state()
         
         if model_state is None:
-            print("[HotSwap] No existing model found in shared memory")
+            logger.info(f"[HotSwap] No existing model found in shared memory")
             return False
         
         try:
@@ -128,13 +128,13 @@ class SurrogateManagerWithHotSwap:
             version_info = self.shared_memory.get_model_version()
             self.hot_swap_manager.current_version = version_info.get('version', 0)
             
-            print(f"[HotSwap] Model loaded from shared memory: version={self.hot_swap_manager.current_version}, "
+            logger.info(f"[HotSwap] Model loaded from shared memory: version={self.hot_swap_manager.current_version}, "
                   f"samples={len(self.surrogate.surrogate.X_samples)}")
             
             return True
             
         except Exception as e:
-            print(f"[ERROR] Failed to load model from shared memory: {e}")
+            logger.error(f"[ERROR] Failed to load model from shared memory: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -195,13 +195,13 @@ class SurrogateManagerWithHotSwap:
                 
                 self.n_swaps += 1
                 
-                print(f"\n[HotSwap] ✅ Model swapped: v{old_version} -> v{self.hot_swap_manager.current_version} "
+                logger.info(f"\n[HotSwap] ✅ Model swapped: v{old_version} -> v{self.hot_swap_manager.current_version} "
                       f"(samples={len(self.surrogate.surrogate.X_samples)})")
                 
                 return True
                 
             except Exception as e:
-                print(f"[ERROR] Hot swap failed: {e}")
+                logger.error(f"[ERROR] Hot swap failed: {e}")
                 import traceback
                 traceback.print_exc()
                 
@@ -216,7 +216,7 @@ class SurrogateManagerWithHotSwap:
                 if backup_models is not None:
                     self.surrogate.surrogate.models = backup_models
                 
-                print(f"[HotSwap] ❌ Rolled back to version {self.hot_swap_manager.current_version}")
+                logger.info(f"[HotSwap] ❌ Rolled back to version {self.hot_swap_manager.current_version}")
                 
                 return False
     
@@ -371,7 +371,7 @@ class DualLineSurrogateManager:
             if self.manager.get_n_samples() >= self.initial_samples_needed:
                 if self.manager.is_trained():
                     self.initial_training_done = True
-                    print(f"[DualLine] Initial training completed with {self.manager.get_n_samples()} samples")
+                    logger.info(f"[DualLine] Initial training completed with {self.manager.get_n_samples()} samples")
         
         # 后续阶段：检查热替换
         if self.initial_training_done:

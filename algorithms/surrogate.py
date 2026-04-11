@@ -4,6 +4,7 @@
 """
 import numpy as np
 from typing import Dict, List, Optional, Tuple
+from loguru import logger
 
 from .base import BaseOptimizer
 from .nsga2 import NSGA2
@@ -49,7 +50,7 @@ class GPSurrogateModel:
             
         except ImportError:
             self._sklearn_available = False
-            print("[WARN] scikit-learn not available, surrogate disabled")
+            logger.warning("[WARN] scikit-learn not available, surrogate disabled")
     
     def add_sample(self, x: np.ndarray, y: List[float]):
         """添加训练样本"""
@@ -74,7 +75,7 @@ class GPSurrogateModel:
             return True
             
         except Exception as e:
-            print(f"[WARN] Train surrogate: {e}")
+            logger.warning(f"[WARN] Train surrogate: {e}")
             return False
     
     def predict(self, x: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
@@ -166,11 +167,11 @@ class SurrogateAssistedNSGA2(NSGA2):
     
     def run(self, evaluator) -> List[Dict]:
         """运行优化"""
-        print("\n" + "=" * 60)
-        print("SURROGATE-ASSISTED NSGA-II OPTIMIZATION")
-        print(f"Initial samples: {self.initial_samples}")
-        print(f"Surrogate: {'Enabled' if self.surrogate_enabled else 'Disabled'}")
-        print("=" * 60)
+        logger.info("\n" + "=" * 60)
+        logger.info("SURROGATE-ASSISTED NSGA-II OPTIMIZATION")
+        logger.info(f"Initial samples: {self.initial_samples}")
+        logger.info(f"Surrogate: {'Enabled' if self.surrogate_enabled else 'Disabled'}")
+        logger.info("=" * 60)
         
         # 初始化代理模型
         if self.surrogate_enabled:
@@ -185,7 +186,7 @@ class SurrogateAssistedNSGA2(NSGA2):
         
         # Phase 2: NSGA-II 优化
         for gen in range(self.n_generations):
-            print(f"\n[Generation {gen + 1}/{self.n_generations}]")
+            logger.info(f"\n[Generation {gen + 1}/{self.n_generations}]")
             
             fronts = self.fast_non_dominated_sort(population, objectives)
             offspring = self._generate_offspring_surrogate(population, objectives, fronts, evaluator)
@@ -198,12 +199,12 @@ class SurrogateAssistedNSGA2(NSGA2):
             # 早停检查
             if self.should_stop_early(all_results):
                 goals_count = self.count_solutions_meeting_goals(all_results)
-                print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                logger.info(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
                 break
             
             current_fronts = self.fast_non_dominated_sort(population, objectives)
             if current_fronts and current_fronts[0]:
-                print(f"  Pareto front: {len(current_fronts[0])} solutions")
+                logger.info(f"  Pareto front: {len(current_fronts[0])} solutions")
         
         # Phase 3: 验证 Pareto 前沿
         fronts = self.fast_non_dominated_sort(population, objectives)
@@ -229,11 +230,11 @@ class SurrogateAssistedNSGA2(NSGA2):
         self.lhs_sampler = LatinHypercubeSampler(self.variables)
         self.training_X = []
         self.training_y = []
-        print(f"[OK] Surrogate model initialized")
+        logger.success(f"[OK] Surrogate model initialized")
     
     def _lhs_initialization(self, evaluator) -> Tuple:
         """拉丁超立方采样初始化"""
-        print(f"\n[LHS] Generating {self.initial_samples} dispersed samples...")
+        logger.info(f"\n[LHS] Generating {self.initial_samples} dispersed samples...")
         
         samples = self.lhs_sampler.generate_with_corners(self.initial_samples)
         
@@ -255,7 +256,7 @@ class SurrogateAssistedNSGA2(NSGA2):
                 
                 self._print_result(i + 1, result[1])
         
-        print(f"[LHS] Complete: {len(population)} valid samples")
+        logger.info(f"[LHS] Complete: {len(population)} valid samples")
         return population, objectives, all_results
     
     def _train_surrogate(self):
@@ -264,7 +265,7 @@ class SurrogateAssistedNSGA2(NSGA2):
             self.surrogate.add_sample(x, y)
         
         if self.surrogate.train():
-            print(f"\n[Surrogate] Trained with {len(self.training_X)} samples")
+            logger.info(f"\n[Surrogate] Trained with {len(self.training_X)} samples")
     
     def _generate_offspring_surrogate(self, population, objectives, fronts, evaluator) -> Tuple:
         """生成子代（使用代理模型）"""
@@ -359,7 +360,7 @@ class SurrogateAssistedNSGA2(NSGA2):
                 res.get('is_surrogate', False) 
                 for res in results.values() if isinstance(res, dict)
             ):
-                print(f"  Validating solution with real simulation...")
+                logger.debug(f"  Validating solution with real simulation...")
                 result = self._evaluate_with_cache(params, evaluator)
                 if result is not None:
                     results = result[1]

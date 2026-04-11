@@ -13,6 +13,12 @@ import traceback
 from pathlib import Path
 from datetime import datetime
 from PyQt6 import QtWidgets, QtCore, QtGui
+
+PROJECT_ROOT = Path(__file__).parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+__version__ = "2026.4.8"
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QTableWidget, QTableWidgetItem, QPushButton, QLabel,
@@ -29,7 +35,6 @@ from config.surrogate_config import (
 )
 from utils.formula import FormulaValidator
 
-PROJECT_ROOT = Path(__file__).parent
 CONFIG_FILE = PROJECT_ROOT / "user_config.json"
 
 
@@ -580,7 +585,7 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
 
         form_layout.addWidget(QLabel("类型:"), 0, 2)
         self.obj_type_combo = QComboBox()
-        self.obj_type_combo.addItems(['S参数', 'Z参数', 'Gain', 'peakGain', 'Z实部', 'Z虚部'])
+        self.obj_type_combo.addItems(['S参数', 'Z参数', 'Gain', 'peakGain'])
         form_layout.addWidget(self.obj_type_combo, 0, 3)
 
         form_layout.addWidget(QLabel("目标值:"), 0, 4)
@@ -1609,9 +1614,7 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
                 'peak_gain': 'peakGain',
                 's_db': 'S参数',
                 's_mag': 'S参数',
-                's_phase': 'S参数',
-                'z_real': 'Z实部',
-                'z_imag': 'Z虚部'
+                's_phase': 'S参数'
             }
             internal_type = obj.get('type', 'formula')
             gui_type = internal_to_gui.get(internal_type, 'S参数')
@@ -1875,120 +1878,124 @@ class HFSSOptimizerGUI(QtWidgets.QMainWindow):
     def _save_config_quiet(self):
         """静默保存配置（不写日志、不弹提示）"""
         try:
-            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, indent=2, ensure_ascii=False)
+            # 调用 save_config，但不打印日志
+            if self._update_config_from_gui():
+                with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(self.config, f, indent=2, ensure_ascii=False)
         except Exception:
             pass
+    
+    def _update_config_from_gui(self) -> bool:
+        """从 GUI 读取配置并更新 self.config"""
+        try:
+            variables = []
+            for row in range(self.var_table.rowCount()):
+                name_item = self.var_table.item(row, 0)
+                if name_item and name_item.text():
+                    min_text = self.var_table.item(row, 1).text() if self.var_table.item(row, 1) else '0'
+                    max_text = self.var_table.item(row, 2).text() if self.var_table.item(row, 2) else '1'
+                    
+                    def parse_bound(text):
+                        try:
+                            return float(text)
+                        except ValueError:
+                            return text
+                    
+                    variables.append({
+                        'name': name_item.text(),
+                        'bounds': [parse_bound(min_text), parse_bound(max_text)],
+                        'unit': self.var_table.item(row, 3).text() if self.var_table.item(row, 3) else 'mm'
+                    })
+
+            objectives = []
+            type_to_internal = {
+                'S参数': 'formula',
+                'Z参数': 'formula',
+                'Gain': 'gain',
+                'peakGain': 'peak_gain'
+            }
+            for row in range(self.obj_table.rowCount()):
+                name_item = self.obj_table.item(row, 0)
+                if name_item and name_item.text():
+                    gui_type = self.obj_table.item(row, 1).text() if self.obj_table.item(row, 1) else 'S参数'
+                    internal_type = type_to_internal.get(gui_type, 'formula')
+                    obj = {
+                        'name': name_item.text(),
+                        'type': internal_type,
+                        'goal': float(self.obj_table.item(row, 4).text()) if self.obj_table.item(row, 4) else 0,
+                        'target': self.obj_table.item(row, 5).text() if self.obj_table.item(row, 5) else 'minimize',
+                        'weight': float(self.obj_table.item(row, 6).text()) if self.obj_table.item(row, 6) else 1.0
+                    }
+                    freq_text = self.obj_table.item(row, 2).text() if self.obj_table.item(row, 2) else ''
+                    formula_text = self.obj_table.item(row, 3).text() if self.obj_table.item(row, 3) else ''
+                    
+                    if internal_type == 'formula':
+                        if '-' in freq_text:
+                            parts = freq_text.split('-')
+                            obj['freq_range'] = [float(parts[0]), float(parts[1])]
+                        else:
+                            try:
+                                obj['freq'] = float(freq_text)
+                            except Exception:
+                                pass
+                        if formula_text:
+                            obj['formula'] = formula_text
+                        else:
+                            obj['formula'] = 'dB(S(1,1))'
+                    else:
+                        if '-' in freq_text:
+                            parts = freq_text.split('-')
+                            obj['freq_range'] = [float(parts[0]), float(parts[1])]
+                        else:
+                            try:
+                                obj['freq'] = float(freq_text)
+                            except Exception:
+                                pass
+                    objectives.append(obj)
+
+            self.config = {
+                'hfss': {
+                    'project_path': self.project_path_edit.text(),
+                    'design_name': self.design_name_edit.text(),
+                    'setup_name': self.setup_name_edit.text(),
+                    'sweep_name': self.sweep_name_edit.text()
+                },
+                'variables': variables,
+                'objectives': objectives,
+                'algorithm': {
+                    'algorithm': self.algorithm_combo.currentText(),
+                    'population_size': self.population_spin.value(),
+                    'n_generations': self.generations_spin.value(),
+                    'surrogate_type': self._get_surrogate_model_key(),
+                    'use_surrogate': self.surrogate_check.isChecked(),
+                    'surrogate_config': {
+                        'min_samples': self.min_samples_spin.value(),
+                        'uncertainty_threshold': self.uncertainty_spin.value(),
+                        'model_params': self._get_model_params()
+                    },
+                    'stop_when_goal_met': self.earlystop_check.isChecked(),
+                    'n_solutions_to_stop': self.earlystop_count_spin.value(),
+                    'load_evaluations': self.config.get('algorithm', {}).get('load_evaluations')
+                },
+                'run': {'output_dir': str(PROJECT_ROOT / "optim_results")},
+                'visualization': {
+                    'plot_interval': self.plot_interval_spin.value(),
+                    'surrogate_recent_window': self.surrogate_recent_window_spin.value()
+                }
+            }
+            return True
+        except Exception as e:
+            self.log(f"配置更新失败: {e}")
+            return False
 
     def save_config(self):
         """保存配置"""
-        variables = []
-        for row in range(self.var_table.rowCount()):
-            name_item = self.var_table.item(row, 0)
-            if name_item and name_item.text():
-                min_text = self.var_table.item(row, 1).text() if self.var_table.item(row, 1) else '0'
-                max_text = self.var_table.item(row, 2).text() if self.var_table.item(row, 2) else '1'
-                
-                def parse_bound(text):
-                    try:
-                        return float(text)
-                    except ValueError:
-                        return text
-                
-                variables.append({
-                    'name': name_item.text(),
-                    'bounds': [parse_bound(min_text), parse_bound(max_text)],
-                    'unit': self.var_table.item(row, 3).text() if self.var_table.item(row, 3) else 'mm'
-                })
-
-        objectives = []
-        # GUI类型到内部类型的映射
-        type_to_internal = {
-            'S参数': 'formula',
-            'Z参数': 'formula',
-            'Gain': 'gain',
-            'peakGain': 'peak_gain',
-            'Z实部': 'z_real',
-            'Z虚部': 'z_imag'
-        }
-        for row in range(self.obj_table.rowCount()):
-            name_item = self.obj_table.item(row, 0)
-            if name_item and name_item.text():
-                gui_type = self.obj_table.item(row, 1).text() if self.obj_table.item(row, 1) else 'S参数'
-                internal_type = type_to_internal.get(gui_type, 'formula')
-                obj = {
-                    'name': name_item.text(),
-                    'type': internal_type,
-                    'goal': float(self.obj_table.item(row, 4).text()) if self.obj_table.item(row, 4) else 0,
-                    'target': self.obj_table.item(row, 5).text() if self.obj_table.item(row, 5) else 'minimize',
-                    'weight': float(self.obj_table.item(row, 6).text()) if self.obj_table.item(row, 6) else 1.0
-                }
-                freq_text = self.obj_table.item(row, 2).text() if self.obj_table.item(row, 2) else ''
-                formula_text = self.obj_table.item(row, 3).text() if self.obj_table.item(row, 3) else ''
-                
-                if internal_type == 'formula':
-                    # S参数类型：解析频段范围，同时保存公式
-                    if '-' in freq_text:
-                        parts = freq_text.split('-')
-                        obj['freq_range'] = [float(parts[0]), float(parts[1])]
-                    else:
-                        try:
-                            obj['freq'] = float(freq_text)
-                        except Exception:
-                            pass
-                    # 公式从第3列获取
-                    if formula_text:
-                        obj['formula'] = formula_text
-                    else:
-                        obj['formula'] = 'dB(S(1,1))'
-                else:
-                    # 其他类型：解析频率范围或单频率
-                    if '-' in freq_text:
-                        parts = freq_text.split('-')
-                        obj['freq_range'] = [float(parts[0]), float(parts[1])]
-                    else:
-                        try:
-                            obj['freq'] = float(freq_text)
-                        except Exception:
-                            pass
-                objectives.append(obj)
-
-        config = {
-            'hfss': {
-                'project_path': self.project_path_edit.text(),
-                'design_name': self.design_name_edit.text(),
-                'setup_name': self.setup_name_edit.text(),
-                'sweep_name': self.sweep_name_edit.text()
-            },
-            'variables': variables,
-            'objectives': objectives,
-            'algorithm': {
-                'algorithm': self.algorithm_combo.currentText(),
-                'population_size': self.population_spin.value(),
-                'n_generations': self.generations_spin.value(),
-                # 代理模型配置（新结构）
-                'surrogate_type': self._get_surrogate_model_key(),
-                'use_surrogate': self.surrogate_check.isChecked(),
-                'surrogate_config': {
-                    'min_samples': self.min_samples_spin.value(),
-                    'uncertainty_threshold': self.uncertainty_spin.value(),
-                    'model_params': self._get_model_params()
-                },
-                # 早停配置
-                'stop_when_goal_met': self.earlystop_check.isChecked(),
-                'n_solutions_to_stop': self.earlystop_count_spin.value(),
-                # 历史数据路径（保留之前导入的路径）
-                'load_evaluations': self.config.get('algorithm', {}).get('load_evaluations')
-            },
-            'run': {'output_dir': str(PROJECT_ROOT / "optim_results")},
-            'visualization': {
-                'plot_interval': self.plot_interval_spin.value(),
-                'surrogate_recent_window': self.surrogate_recent_window_spin.value()
-            }
-        }
-
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        if self._update_config_from_gui():
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, indent=2, ensure_ascii=False)
+            self.log("配置已保存")
+            return True
+        return False
 
 
 def main():

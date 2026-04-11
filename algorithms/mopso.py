@@ -23,6 +23,7 @@ import random
 import json
 import os
 import sys
+from loguru import logger
 from .base import BaseOptimizer
 
 # 导入代理模型模块
@@ -123,17 +124,17 @@ class MOPSO(BaseOptimizer):
         # 变量边界
         self.bounds = self.get_bounds()
         
-        print(f"\n{'='*60}")
-        print("MULTI-OBJECTIVE PARTICLE SWARM OPTIMIZATION (MOPSO)")
-        print(f"{'='*60}")
-        print(f"Population size: {self.population_size}")
-        print(f"Generations: {self.n_generations}")
-        print(f"Inertia weight: {self.w_min}-{self.w_max} (adaptive)")
-        print(f"Learning factors: c1={self.c1}, c2={self.c2}")
-        print(f"Surrogate: {'Enabled (' + self.surrogate_type + ')' if self.use_surrogate else 'Disabled'}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"MULTI-OBJECTIVE PARTICLE SWARM OPTIMIZATION (MOPSO)")
+        logger.info(f"{'='*60}")
+        logger.info(f"Population size: {self.population_size}")
+        logger.info(f"Generations: {self.n_generations}")
+        logger.info(f"Inertia weight: {self.w_min}-{self.w_max} (adaptive)")
+        logger.info(f"Learning factors: c1={self.c1}, c2={self.c2}")
+        logger.info(f"Surrogate: {'Enabled (' + self.surrogate_type + ')' if self.use_surrogate else 'Disabled'}")
         if self.load_evaluations_path:
-            print(f"Load evaluations: {self.load_evaluations_path}")
-        print(f"{'='*60}")
+            logger.info(f"Load evaluations: {self.load_evaluations_path}")
+        logger.info(f"{'='*60}")
         
         # 加载历史评估数据
         n_loaded = self._load_historical_data()
@@ -158,12 +159,12 @@ class MOPSO(BaseOptimizer):
                     **model_params
                 )
                 
-                print(f"[INFO] Dual-line mode enabled: {self.surrogate_type}")
-                print(f"[INFO] Shared directory: {self.shared_dir}")
+                logger.info(f"[INFO] Dual-line mode enabled: {self.surrogate_type}")
+                logger.info(f"[INFO] Shared directory: {self.shared_dir}")
                 
                 # 尝试从共享内存加载已有模型
                 if self.surrogate_manager.initialize_from_shared_memory():
-                    print(f"[INFO] Loaded existing model from shared memory")
+                    logger.info(f"[INFO] Loaded existing model from shared memory")
                 
             elif self.surrogate_type == 'incremental':
                 # RFF+SGD 增量学习
@@ -175,7 +176,7 @@ class MOPSO(BaseOptimizer):
                     n_features=n_features,
                     gamma=gamma
                 )
-                print(f"[INFO] Surrogate: incremental (n_features={n_features}, gamma={gamma})")
+                logger.info(f"[INFO] Surrogate: incremental (n_features={n_features}, gamma={gamma})")
                 
             elif self.surrogate_type == 'gpflow_svgp':
                 # GPflow 稀疏变分高斯过程
@@ -187,7 +188,7 @@ class MOPSO(BaseOptimizer):
                     n_inducing=n_inducing,
                     kernel_type=kernel_type
                 )
-                print(f"[INFO] Surrogate: gpflow_svgp (n_inducing={n_inducing}, kernel={kernel_type})")
+                logger.info(f"[INFO] Surrogate: gpflow_svgp (n_inducing={n_inducing}, kernel={kernel_type})")
                 
             elif self.surrogate_type == 'rf':
                 # 随机森林
@@ -199,7 +200,7 @@ class MOPSO(BaseOptimizer):
                     min_samples=min_samples,
                     n_estimators=n_estimators
                 )
-                print(f"[INFO] Surrogate: RF (n_estimators={n_estimators}, retrain_interval={self.retrain_interval})")
+                logger.info(f"[INFO] Surrogate: RF (n_estimators={n_estimators}, retrain_interval={self.retrain_interval})")
                 
             else:
                 # 默认 GP
@@ -209,20 +210,20 @@ class MOPSO(BaseOptimizer):
                     model_type='gp',
                     min_samples=min_samples
                 )
-                print(f"[INFO] Surrogate: GP (retrain_interval={self.retrain_interval})")
+                logger.info(f"[INFO] Surrogate: GP (retrain_interval={self.retrain_interval})")
             
-            print(f"[INFO] Min samples: {min_samples}, Threshold: {self.surrogate_threshold}")
+            logger.info(f"[INFO] Min samples: {min_samples}, Threshold: {self.surrogate_threshold}")
             
             # 用历史数据训练代理模型
             if self.loaded_evaluations:
-                print(f"[INFO] Loading {len(self.loaded_evaluations)} historical samples into surrogate model...")
+                logger.info(f"[INFO] Loading {len(self.loaded_evaluations)} historical samples into surrogate model...")
                 
                 # 打印历史数据的目标值范围
                 all_objectives = np.array([e['objectives'] for e in self.loaded_evaluations])
-                print(f"[INFO] Historical objective ranges:")
+                logger.info(f"[INFO] Historical objective ranges:")
                 for i, obj_config in enumerate(self.objectives):
                     if i < all_objectives.shape[1]:
-                        print(f"  {obj_config.get('name')}: min={all_objectives[:, i].min():.2f}, max={all_objectives[:, i].max():.2f}, std={all_objectives[:, i].std():.2f}")
+                        logger.info(f"  {obj_config.get('name')}: min={all_objectives[:, i].min():.2f}, max={all_objectives[:, i].max():.2f}, std={all_objectives[:, i].std():.2f}")
                 
                 # 批量添加样本（不立即训练）
                 for eval_data in self.loaded_evaluations:
@@ -234,22 +235,22 @@ class MOPSO(BaseOptimizer):
                 
                 # 验证代理模型训练成功
                 if self.surrogate_manager.surrogate.is_trained:
-                    print(f"[OK] Surrogate model trained with all {len(self.loaded_evaluations)} samples!")
+                    logger.success(f"[OK] Surrogate model trained with all {len(self.loaded_evaluations)} samples!")
                     
                     # 测试预测
                     test_x = self.loaded_evaluations[0]['params'].reshape(1, -1)
                     test_y_pred, test_y_std = self.surrogate_manager.predict(test_x, return_std=True)
                     test_y_true = self.loaded_evaluations[0]['objectives']
-                    print(f"[INFO] Validation prediction on first sample:")
-                    print(f"  True values: S11={test_y_true[0]:.2f}, PG={-test_y_true[1]:.2f} dB")
-                    print(f"  Predicted: S11={test_y_pred.flatten()[0]:.2f}, PG={-test_y_pred.flatten()[1]:.2f} dB")
-                    print(f"  Uncertainty: {test_y_std.flatten()}")
+                    logger.info(f"[INFO] Validation prediction on first sample:")
+                    logger.info(f"  True values: S11={test_y_true[0]:.2f}, PG={-test_y_true[1]:.2f} dB")
+                    logger.info(f"  Predicted: S11={test_y_pred.flatten()[0]:.2f}, PG={-test_y_pred.flatten()[1]:.2f} dB")
+                    logger.info(f"  Uncertainty: {test_y_std.flatten()}")
                     
                     # 计算预测误差
                     pred_error = np.abs(test_y_pred.flatten() - test_y_true)
-                    print(f"  Prediction error: S11={pred_error[0]:.2f}, PG={pred_error[1]:.2f}")
+                    logger.info(f"  Prediction error: S11={pred_error[0]:.2f}, PG={pred_error[1]:.2f}")
                 else:
-                    print(f"[WARN] Surrogate model training failed!")
+                    logger.warning(f"[WARN] Surrogate model training failed!")
                 
                 # 更新真实仿真计数（历史数据也算真实仿真）
                 self.real_evaluation_count = len(self.loaded_evaluations)
@@ -267,9 +268,9 @@ class MOPSO(BaseOptimizer):
         )
         
         if use_surrogate_for_init:
-            print(f"\n[Initialization] Evaluating {self.population_size} particles (surrogate-assisted)...")
+            logger.info(f"\n[Initialization] Evaluating {self.population_size} particles (surrogate-assisted)...")
         else:
-            print(f"\n[Initialization] Evaluating {self.population_size} particles (real simulation)...")
+            logger.info(f"\n[Initialization] Evaluating {self.population_size} particles (real simulation)...")
         
         n_real_evals = 0
         n_surrogate_evals = 0
@@ -281,8 +282,8 @@ class MOPSO(BaseOptimizer):
                     y, is_real = self._evaluate(particle, evaluator, force_real=force_real)
                     break  # 成功，跳出循环
                 except RuntimeError as e:
-                    print(f"  [ERROR] Evaluation failed (HFSS error): {e}")
-                    print(f"  [INFO] Will retry after reconnection...")
+                    logger.info(f"  [ERROR] Evaluation failed (HFSS error): {e}")
+                    logger.info(f"  [INFO] Will retry after reconnection...")
                     import time
                     time.sleep(10)
                     continue  # 重试
@@ -305,17 +306,17 @@ class MOPSO(BaseOptimizer):
                     is_surrogate = not is_real
                     self.callback(i, self.population_size, particle, y, 'initial', surrogate_preds, is_surrogate)
         
-        print(f"[INFO] Initial evaluation: {n_real_evals} real, {n_surrogate_evals} surrogate")
-        print(f"[INFO] Archive size after initialization: {len(self.archive)}")
+        logger.info(f"[INFO] Initial evaluation: {n_real_evals} real, {n_surrogate_evals} surrogate")
+        logger.info(f"[INFO] Archive size after initialization: {len(self.archive)}")
         
         # 初始化后早停检查
         if self.stop_when_goal_met:
             archive_objectives = [np.array(sol['objectives']) for sol in self.archive]
             if len(archive_objectives) > 0:
                 goals_count = self.count_objectives_meeting_goals_from_arrays(archive_objectives)
-                print(f"[INFO] Goals check: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                logger.info(f"[INFO] Goals check: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
                 if goals_count >= self.n_solutions_to_stop:
-                    print(f"\n[INFO] Early stop after initialization: {goals_count} solutions meet goals")
+                    logger.info(f"\n[INFO] Early stop after initialization: {goals_count} solutions meet goals")
                     return self._get_pareto_solutions()
         
         # 迭代优化
@@ -323,8 +324,8 @@ class MOPSO(BaseOptimizer):
             # 自适应惯性权重
             w = self.w_max - (self.w_max - self.w_min) * gen / self.n_generations
             
-            print(f"\n[Generation {gen + 1}/{self.n_generations}]")
-            print(f"  Archive size: {len(self.archive)}, Inertia: {w:.3f}")
+            logger.info(f"\n[Generation {gen + 1}/{self.n_generations}]")
+            logger.info(f"  Archive size: {len(self.archive)}, Inertia: {w:.3f}")
             
             for i in range(self.population_size):
                 # 从档案中选择全局最优
@@ -351,8 +352,8 @@ class MOPSO(BaseOptimizer):
                         y, is_real = self._evaluate(self.particles[i], evaluator)
                         break  # 成功，跳出循环
                     except RuntimeError as e:
-                        print(f"  [ERROR] Evaluation failed (HFSS error): {e}")
-                        print(f"  [INFO] Will retry after reconnection...")
+                        logger.info(f"  [ERROR] Evaluation failed (HFSS error): {e}")
+                        logger.info(f"  [INFO] Will retry after reconnection...")
                         import time
                         time.sleep(10)
                         continue  # 重试
@@ -381,7 +382,7 @@ class MOPSO(BaseOptimizer):
                 if len(archive_objectives) > 0:
                     goals_count = self.count_objectives_meeting_goals_from_arrays(archive_objectives)
                     if goals_count >= self.n_solutions_to_stop:
-                        print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                        logger.info(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
                         break
         
         # 返回 Pareto 前沿
@@ -403,7 +404,7 @@ class MOPSO(BaseOptimizer):
             return 0
         
         if not os.path.exists(self.load_evaluations_path):
-            print(f"[WARN] Evaluations file not found: {self.load_evaluations_path}")
+            logger.warning(f"[WARN] Evaluations file not found: {self.load_evaluations_path}")
             return 0
         
         loaded_count = 0
@@ -436,7 +437,7 @@ class MOPSO(BaseOptimizer):
                                     obj_values.append(objectives_data[obj_name]['value'])
                                 else:
                                     # 目标名称不匹配，跳过此记录
-                                    print(f"[WARN] Objective '{obj_name}' not found in history data")
+                                    logger.warning(f"[WARN] Objective '{obj_name}' not found in history data")
                                     obj_values = None
                                     break
                             
@@ -452,11 +453,11 @@ class MOPSO(BaseOptimizer):
                         
                         # 检查数据有效性
                         if len(params) != self.n_variables:
-                            print(f"[WARN] Skip record: param count mismatch ({len(params)} vs {self.n_variables})")
+                            logger.warning(f"[WARN] Skip record: param count mismatch ({len(params)} vs {self.n_variables})")
                             continue
                         
                         if len(objectives) != self.n_objectives:
-                            print(f"[WARN] Skip record: objective count mismatch ({len(objectives)} vs {self.n_objectives})")
+                            logger.warning(f"[WARN] Skip record: objective count mismatch ({len(objectives)} vs {self.n_objectives})")
                             continue
                         
                         # 过滤异常值（仿真失败时目标值通常设为大正数）
@@ -483,12 +484,12 @@ class MOPSO(BaseOptimizer):
                         loaded_count += 1
                         
                     except (json.JSONDecodeError, KeyError, TypeError) as e:
-                        print(f"[WARN] Skip invalid line: {e}")
+                        logger.warning(f"[WARN] Skip invalid line: {e}")
                         continue
             
-            print(f"[OK] Loaded {loaded_count} historical evaluations from: {self.load_evaluations_path}")
+            logger.success(f"[OK] Loaded {loaded_count} historical evaluations from: {self.load_evaluations_path}")
             if skipped_invalid > 0:
-                print(f"[INFO] Filtered {skipped_invalid} records with abnormal values (|obj| > 100)")
+                logger.info(f"[INFO] Filtered {skipped_invalid} records with abnormal values (|obj| > 100)")
             
             # 用历史数据初始化 Pareto 档案
             if self.loaded_evaluations:
@@ -500,7 +501,7 @@ class MOPSO(BaseOptimizer):
             return loaded_count
             
         except Exception as e:
-            print(f"[ERROR] Failed to load evaluations: {e}")
+            logger.error(f"[ERROR] Failed to load evaluations: {e}")
             return 0
     
     def _init_archive_from_history(self):
@@ -510,7 +511,7 @@ class MOPSO(BaseOptimizer):
             y = eval_data['objectives']
             self._update_archive(x, y)
         
-        print(f"[OK] Initialized Pareto archive with {len(self.archive)} solutions from history")
+        logger.success(f"[OK] Initialized Pareto archive with {len(self.archive)} solutions from history")
     
     def _write_history_to_output(self):
         """把历史数据写入新的输出目录的 evaluations 文件"""
@@ -531,10 +532,10 @@ class MOPSO(BaseOptimizer):
             
             # 更新 evaluator 的计数（累加历史数据数量）
             self.evaluator.eval_count += len(self.loaded_evaluations)
-            print(f"[OK] Historical data written to: {self.evaluator.eval_file}")
+            logger.success(f"[OK] Historical data written to: {self.evaluator.eval_file}")
             
         except Exception as e:
-            print(f"[WARN] Failed to write historical data: {e}")
+            logger.warning(f"[WARN] Failed to write historical data: {e}")
     
     def _initialize_particles(self, n_vars: int):
         """初始化粒子群
@@ -574,7 +575,7 @@ class MOPSO(BaseOptimizer):
                 self.pbest.append(particle.copy())
                 self.pbest_objectives.append(None)
             
-            print(f"[INFO] Initialized {n_from_history} particles from historical data")
+            logger.info(f"[INFO] Initialized {n_from_history} particles from historical data")
         
         # 剩余粒子使用拉丁超立方采样
         for i in range(n_from_history, self.population_size):
@@ -618,7 +619,7 @@ class MOPSO(BaseOptimizer):
         # 安全检查：确保最小训练样本数不低于 5
         if self.use_surrogate and self.surrogate_manager:
             if self.surrogate_manager.min_samples_to_train < 5:
-                print(f"[WARN] surrogate_min_samples={self.surrogate_manager.min_samples_to_train} is too low, raising to 5")
+                logger.warning(f"[WARN] surrogate_min_samples={self.surrogate_manager.min_samples_to_train} is too low, raising to 5")
                 self.surrogate_manager.min_samples_to_train = 5
         
         # 检查缓存（只缓存真实仿真结果）
@@ -677,7 +678,7 @@ class MOPSO(BaseOptimizer):
                         normalized_uncertainty = float('inf')
                 
                 # 调试输出：打印预测值和不确定性
-                print(f"  [Surrogate Debug] y_pred={y_pred}, y_std={y_std}, uncertainty={normalized_uncertainty:.3f}")
+                logger.info(f"  [Surrogate Debug] y_pred={y_pred}, y_std={y_std}, uncertainty={normalized_uncertainty:.3f}")
                 
                 # 额外安全检查：如果真实仿真次数占比太低，强制做真实仿真
                 total_evals = self.real_evaluation_count + self.surrogate_eval_count
@@ -686,13 +687,13 @@ class MOPSO(BaseOptimizer):
                     # 确保至少 30% 的评估是真实仿真
                     if real_ratio < 0.3:
                         normalized_uncertainty = float('inf')
-                        print(f"  [Safety] Real eval ratio {real_ratio:.1%} too low, forcing real simulation")
+                        logger.info(f"  [Safety] Real eval ratio {real_ratio:.1%} too low, forcing real simulation")
                 
                 # 不确定性低于阈值 → 使用预测值（跳过真实仿真）
                 if normalized_uncertainty < self.surrogate_threshold:
                     self.surrogate_eval_count += 1
                     self._last_surrogate_pred = y_pred  # 记录代理预测值
-                    print(f"  [Surrogate] Eval #{self.evaluation_count} (uncertainty: {normalized_uncertainty:.3f} < {self.surrogate_threshold}, prediction)")
+                    logger.info(f"  [Surrogate] Eval #{self.evaluation_count} (uncertainty: {normalized_uncertainty:.3f} < {self.surrogate_threshold}, prediction)")
                     return y_pred, False
         
         # 真实仿真（不确定性高 或 未启用代理 或 初始阶段）
@@ -714,14 +715,14 @@ class MOPSO(BaseOptimizer):
                     samples_since_retrain = current_sample_count - self._last_retrain_count
                     
                     if samples_since_retrain >= self.retrain_interval:
-                        print(f"  [Retraining] Full retrain triggered (interval={self.retrain_interval}, new samples={samples_since_retrain})")
+                        logger.info(f"  [Retraining] Full retrain triggered (interval={self.retrain_interval}, new samples={samples_since_retrain})")
                         self.surrogate_manager.retrain_all()
                         self._last_retrain_count = current_sample_count
         
         # 缓存结果
         self._add_to_cache(x, y)
         
-        print(f"  [Real] Eval #{self.evaluation_count}")
+        logger.info(f"  [Real] Eval #{self.evaluation_count}")
         
         return y, True
     
@@ -735,7 +736,7 @@ class MOPSO(BaseOptimizer):
             params_dict = {v['name']: x_formatted[i] for i, v in enumerate(self.variables)}
             valid, msg = self.constraint_mgr.check_constraints(params_dict)
             if not valid:
-                print(f"  [CONSTRAINT VIOLATION] {msg} -> returning penalty")
+                logger.info(f"  [CONSTRAINT VIOLATION] {msg} -> returning penalty")
                 return self.get_penalty_objectives()
         
         # 设置变量并运行仿真 - 持续重试直到成功
@@ -745,8 +746,8 @@ class MOPSO(BaseOptimizer):
                     evaluator.hfss.set_variable(var['name'], x_formatted[j], var.get('unit', 'mm'))
                 break  # 成功设置变量，跳出循环
             except RuntimeError as e:
-                print(f"  [ERROR] Failed to set variable: {e}")
-                print(f"  [INFO] HFSS disconnected, waiting to reconnect...")
+                logger.info(f"  [ERROR] Failed to set variable: {e}")
+                logger.info(f"  [INFO] HFSS disconnected, waiting to reconnect...")
                 import time
                 time.sleep(10)  # 等待10秒
                 continue  # 继续重试
@@ -757,10 +758,10 @@ class MOPSO(BaseOptimizer):
                 if evaluator.hfss.analyze(force=True):
                     break  # 分析成功，跳出循环
                 # analyze() 返回 False 表示失败，等待后重试
-                print(f"  [WARN] Analysis returned False, retrying...")
+                logger.info(f"  [WARN] Analysis returned False, retrying...")
             except Exception as e:
-                print(f"  [ERROR] Analysis failed: {e}")
-            print(f"  [INFO] HFSS disconnected, waiting to reconnect...")
+                logger.info(f"  [ERROR] Analysis failed: {e}")
+            logger.info(f"  [INFO] HFSS disconnected, waiting to reconnect...")
             import time
             time.sleep(10)  # 等待10秒
             continue  # 继续重试
@@ -784,7 +785,7 @@ class MOPSO(BaseOptimizer):
         elif isinstance(result, (int, float)):
             y = np.array([float(result)])
         else:
-            print(f"[WARN] Unknown result type: {type(result)}")
+            logger.warning(f"[WARN] Unknown result type: {type(result)}")
             return np.array([1e6] * self.n_objectives)
         
         # 确保是一维数组

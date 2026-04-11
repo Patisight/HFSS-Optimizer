@@ -13,6 +13,7 @@ import json
 import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional
+from loguru import logger
 
 # 尝试导入 matplotlib
 try:
@@ -23,7 +24,7 @@ try:
     MPL_AVAILABLE = True
 except ImportError:
     MPL_AVAILABLE = False
-    print("[WARN] matplotlib not available, visualization disabled")
+    logger.warning(f"[WARN] matplotlib not available, visualization disabled")
 
 
 class OptimizationVisualizer:
@@ -65,7 +66,7 @@ class OptimizationVisualizer:
             try:
                 return [float(x) for x in result]
             except (ValueError, TypeError) as e:
-                print(f"[WARN] Failed to convert objectives to float: {result}, error: {e}")
+                logger.warning(f"[WARN] Failed to convert objectives to float: {result}, error: {e}")
                 return [0.0] * self.n_objectives
         else:
             try:
@@ -197,7 +198,7 @@ class OptimizationVisualizer:
                         continue
         
         if count > 0:
-            print(f"[Visualizer] Loaded {count} historical evaluations for plotting")
+            logger.info(f"[Visualizer] Loaded {count} historical evaluations for plotting")
     
     def _compute_pareto_from_evaluations(self) -> Optional[np.ndarray]:
         """从已有评估数据中自动计算帕累托前沿"""
@@ -286,7 +287,7 @@ class OptimizationVisualizer:
                 self._plot_surrogate_comparison(iteration)
             
         except Exception as e:
-            print(f"[WARN] Figure generation failed: {e}")
+            logger.warning(f"[WARN] Figure generation failed: {e}")
     
     def _plot_pareto_front(self, iteration: int, pareto_objectives: np.ndarray):
         """绘制帕累托前沿
@@ -549,7 +550,7 @@ class OptimizationVisualizer:
             plt.savefig(os.path.join(self.surrogate_figures_dir, filename), dpi=150)
             plt.close(fig)
         except Exception as e:
-            print(f"[WARN] Surrogate comparison plot failed: {e}")
+            logger.warning(f"[WARN] Surrogate comparison plot failed: {e}")
     
     def _save_surrogate_comparison_data(self):
         """保存代理模型预测与真实值对比数据（JSON 和 CSV）"""
@@ -612,7 +613,7 @@ class OptimizationVisualizer:
             json_path = os.path.join(self.output_dir, 'surrogate_comparison_data.json')
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(json_data, f, indent=2, ensure_ascii=False)
-            print(f"[OK] Saved surrogate comparison data (JSON): {json_path}")
+            logger.success(f"[OK] Saved surrogate comparison data (JSON): {json_path}")
             
             # 保存 CSV
             csv_path = os.path.join(self.output_dir, 'surrogate_comparison_data.csv')
@@ -635,10 +636,10 @@ class OptimizationVisualizer:
                             row_parts.extend(['', '', ''])
                     f.write(','.join(row_parts) + '\n')
             
-            print(f"[OK] Saved surrogate comparison data (CSV): {csv_path}")
+            logger.success(f"[OK] Saved surrogate comparison data (CSV): {csv_path}")
             
         except Exception as e:
-            print(f"[WARN] Failed to save surrogate comparison data: {e}")
+            logger.warning(f"[WARN] Failed to save surrogate comparison data: {e}")
     
     def generate_final_report(self, pareto_solutions: List[Dict], stats: Dict):
         """生成最终报告"""
@@ -661,7 +662,7 @@ class OptimizationVisualizer:
             if len(pareto_objectives) > 0:
                 self._generate_figures(9999, pareto_params, pareto_objectives)
         except Exception as e:
-            print(f"[WARN] Failed to generate figures: {e}")
+            logger.warning(f"[WARN] Failed to generate figures: {e}")
         
         # 分离真实和预测解
         real_solutions = [s for s in pareto_solutions if not s.get('is_predicted', False)]

@@ -84,7 +84,7 @@ class TrainerProcess:
     
     def _signal_handler(self, signum, frame):
         """信号处理器"""
-        print(f"\n[Trainer] Received signal {signum}, shutting down...")
+        logger.info(f"\n[Trainer] Received signal {signum}, shutting down...")
         self.running = False
     
     def _should_filter_sample(self, obj_values: list) -> bool:
@@ -118,15 +118,15 @@ class TrainerProcess:
         Returns:
             是否初始化成功
         """
-        print("\n" + "="*60)
-        print("TRAINER PROCESS INITIALIZATION")
-        print("="*60)
-        print(f"Shared directory: {self.shared_dir}")
-        print(f"Model type: {self.model_type}")
-        print(f"Objectives: {self.n_objectives}")
-        print(f"Min samples: {self.min_samples}")
-        print(f"Min new samples to train: {self.min_new_samples_to_train}")
-        print("="*60)
+        logger.info(f"\n" + "="*60)
+        logger.info(f"TRAINER PROCESS INITIALIZATION")
+        logger.info(f"="*60)
+        logger.info(f"Shared directory: {self.shared_dir}")
+        logger.info(f"Model type: {self.model_type}")
+        logger.info(f"Objectives: {self.n_objectives}")
+        logger.info(f"Min samples: {self.min_samples}")
+        logger.info(f"Min new samples to train: {self.min_new_samples_to_train}")
+        logger.info(f"="*60)
         
         # 初始化代理模型管理器
         try:
@@ -139,7 +139,7 @@ class TrainerProcess:
                     n_inducing=n_inducing,
                     kernel_type=kernel_type
                 )
-                print(f"[Trainer] GPflow-SVGP initialized (n_inducing={n_inducing}, kernel={kernel_type})")
+                logger.info(f"[Trainer] GPflow-SVGP initialized (n_inducing={n_inducing}, kernel={kernel_type})")
                 
             elif self.model_type == 'rf':
                 n_estimators = self.model_params.get('n_estimators', 100)
@@ -149,7 +149,7 @@ class TrainerProcess:
                     min_samples=self.min_samples,
                     n_estimators=n_estimators
                 )
-                print(f"[Trainer] Random Forest initialized (n_estimators={n_estimators})")
+                logger.info(f"[Trainer] Random Forest initialized (n_estimators={n_estimators})")
                 
             else:  # gp
                 self.surrogate_manager = SurrogateManager(
@@ -157,7 +157,7 @@ class TrainerProcess:
                     model_type='gp',
                     min_samples=self.min_samples
                 )
-                print(f"[Trainer] Gaussian Process initialized")
+                logger.info(f"[Trainer] Gaussian Process initialized")
             
             # 更新状态
             self.shared_memory.update_trainer_status({
@@ -170,11 +170,11 @@ class TrainerProcess:
             # 发送就绪信号
             self.shared_memory.send_trainer_signal('ready')
             
-            print("[Trainer] Initialization completed")
+            logger.info(f"[Trainer] Initialization completed")
             return True
             
         except Exception as e:
-            print(f"[ERROR] Initialization failed: {e}")
+            logger.error(f"[ERROR] Initialization failed: {e}")
             import traceback
             traceback.print_exc()
             
@@ -195,12 +195,12 @@ class TrainerProcess:
         监听评估数据变化，触发训练。
         """
         self.running = True
-        print("\n[Trainer] Starting main loop...")
+        logger.info(f"\n[Trainer] Starting main loop...")
         
         # 检查是否有历史数据
         existing_evals = self.shared_memory.get_all_evaluations()
         if existing_evals:
-            print(f"[Trainer] Found {len(existing_evals)} existing evaluations")
+            logger.info(f"[Trainer] Found {len(existing_evals)} existing evaluations")
             self._train_with_new_data(existing_evals)
         
         # 主循环
@@ -215,7 +215,7 @@ class TrainerProcess:
                 
                 # 如果优化线停止，训练线也停止
                 if optimizer_signal == 'stopped':
-                    print("[Trainer] Optimizer stopped, shutting down...")
+                    logger.info(f"[Trainer] Optimizer stopped, shutting down...")
                     break
                 
                 # 检查新数据
@@ -224,7 +224,7 @@ class TrainerProcess:
                     new_evals, current_count = self.shared_memory.get_new_evaluations(self.last_train_count)
                     
                     if new_evals:
-                        print(f"\n[Trainer] Detected {len(new_evals)} new evaluations (total: {current_count})")
+                        logger.info(f"\n[Trainer] Detected {len(new_evals)} new evaluations (total: {current_count})")
                         
                         # 更新状态
                         self.shared_memory.update_trainer_status({
@@ -237,10 +237,10 @@ class TrainerProcess:
                         # 检查是否需要训练
                         n_new = current_count - self.last_train_count
                         if n_new >= self.min_new_samples_to_train:
-                            print(f"[Trainer] Triggering training ({n_new} new samples >= {self.min_new_samples_to_train})")
+                            logger.info(f"[Trainer] Triggering training ({n_new} new samples >= {self.min_new_samples_to_train})")
                             self._train_with_new_data(new_evals)
                         else:
-                            print(f"[Trainer] Waiting for more data ({n_new}/{self.min_new_samples_to_train} new samples)")
+                            logger.info(f"[Trainer] Waiting for more data ({n_new}/{self.min_new_samples_to_train} new samples)")
                     
                     last_check_time = current_time
                 
@@ -255,12 +255,12 @@ class TrainerProcess:
                 time.sleep(0.5)
                 
             except Exception as e:
-                print(f"[ERROR] Main loop error: {e}")
+                logger.error(f"[ERROR] Main loop error: {e}")
                 import traceback
                 traceback.print_exc()
                 time.sleep(5.0)
         
-        print("\n[Trainer] Main loop ended")
+        logger.info(f"\n[Trainer] Main loop ended")
         self._cleanup()
     
     def _train_with_new_data(self, new_evals: List[Dict]):
@@ -286,7 +286,7 @@ class TrainerProcess:
             all_evals = self.shared_memory.get_all_evaluations()
             n_samples = len(all_evals)
             
-            print(f"\n[Trainer] Training with {n_samples} samples...")
+            logger.info(f"\n[Trainer] Training with {n_samples} samples...")
             
             # 提取参数和目标值
             X_list = []
@@ -304,7 +304,7 @@ class TrainerProcess:
                 elif isinstance(objectives, list):
                     obj_values = objectives
                 else:
-                    print(f"[WARN] Invalid objectives format: {objectives}")
+                    logger.warning(f"[WARN] Invalid objectives format: {objectives}")
                     continue
                 
                 # 数据筛选：过滤掉目标值异常的数据
@@ -317,20 +317,20 @@ class TrainerProcess:
                 y_list.append(obj_values)
             
             if len(X_list) < self.min_samples:
-                print(f"[Trainer] Not enough samples: {len(X_list)} < {self.min_samples}")
+                logger.info(f"[Trainer] Not enough samples: {len(X_list)} < {self.min_samples}")
                 return
             
             # 显示过滤统计
             if filtered_count > 0:
-                print(f"[Trainer] Filtered {filtered_count} samples with abnormal objective values (e.g., S11=1000.0)")
+                logger.info(f"[Trainer] Filtered {filtered_count} samples with abnormal objective values (e.g., S11=1000.0)")
             
             X = np.array(X_list)
             y = np.array(y_list)
             
-            print(f"[Trainer] Training data shape: X={X.shape}, y={y.shape}")
-            print(f"[Trainer] Objective ranges:")
+            logger.info(f"[Trainer] Training data shape: X={X.shape}, y={y.shape}")
+            logger.info(f"[Trainer] Objective ranges:")
             for i in range(y.shape[1]):
-                print(f"  Objective {i}: min={y[:, i].min():.4f}, max={y[:, i].max():.4f}, mean={y[:, i].mean():.4f}")
+                logger.info(f"  Objective {i}: min={y[:, i].min():.4f}, max={y[:, i].max():.4f}, mean={y[:, i].mean():.4f}")
             
             # 训练模型（全量训练）
             self.surrogate_manager.X_samples = []  # 清空旧数据
@@ -355,8 +355,8 @@ class TrainerProcess:
             self.last_train_count = n_samples
             self.n_trains += 1
             
-            print(f"[Trainer] Training completed in {train_time:.2f}s")
-            print(f"[Trainer] Model quality: {model_quality}")
+            logger.info(f"[Trainer] Training completed in {train_time:.2f}s")
+            logger.info(f"[Trainer] Model quality: {model_quality}")
             
             # 更新状态
             self.shared_memory.update_trainer_status({
@@ -372,7 +372,7 @@ class TrainerProcess:
             })
             
         except Exception as e:
-            print(f"[ERROR] Training failed: {e}")
+            logger.error(f"[ERROR] Training failed: {e}")
             import traceback
             traceback.print_exc()
             
@@ -394,10 +394,10 @@ class TrainerProcess:
         """
         try:
             quality = self.surrogate_manager.get_model_quality()
-            print(f"[Trainer] Model quality: {quality}")
+            logger.info(f"[Trainer] Model quality: {quality}")
             return quality
         except Exception as e:
-            print(f"[WARN] Failed to evaluate model quality: {e}")
+            logger.warning(f"[WARN] Failed to evaluate model quality: {e}")
             return {'r2': None, 'mae': None, 'status': 'error'}
     
     def _save_model_state(self, model_quality: Dict):
@@ -444,16 +444,16 @@ class TrainerProcess:
             version_info = self.shared_memory.get_model_version()
             self.current_version = version_info.get('version', 0)
             
-            print(f"[Trainer] Model state saved: version={self.current_version}, samples={n_samples}")
+            logger.info(f"[Trainer] Model state saved: version={self.current_version}, samples={n_samples}")
             
         except Exception as e:
-            print(f"[ERROR] Failed to save model state: {e}")
+            logger.error(f"[ERROR] Failed to save model state: {e}")
             import traceback
             traceback.print_exc()
     
     def _cleanup(self):
         """清理资源"""
-        print("\n[Trainer] Cleaning up...")
+        logger.info(f"\n[Trainer] Cleaning up...")
         
         # 保存最终统计
         stats = {
@@ -468,12 +468,12 @@ class TrainerProcess:
         with open(stats_file, 'w', encoding='utf-8') as f:
             json.dump(stats, f, indent=2, ensure_ascii=False)
         
-        print(f"[Trainer] Stats saved to {stats_file}")
+        logger.info(f"[Trainer] Stats saved to {stats_file}")
         
         # 清理共享内存
         self.shared_memory.cleanup()
         
-        print("[Trainer] Cleanup completed")
+        logger.info(f"[Trainer] Cleanup completed")
 
 
 def main():
@@ -492,7 +492,7 @@ def main():
     if trainer.initialize():
         trainer.run()
     else:
-        print("[ERROR] Initialization failed, exiting")
+        logger.error(f"[ERROR] Initialization failed, exiting")
         sys.exit(1)
 
 

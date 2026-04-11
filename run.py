@@ -15,13 +15,22 @@ import time
 import argparse
 import traceback
 from datetime import datetime
+from loguru import logger
+
+# 日志配置
+logger.remove()
+logger.add(sys.stderr, level="INFO")
+logger.add("logs/optimizer_{time}.log", rotation="10 MB", retention="7 days", level="DEBUG", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
 
 # 添加项目路径
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 
+__version__ = "2026.4.8"
+
 # 导入模块
 from core import HFSSController, ObjectiveEvaluator, format_results
+from core.config_validator import OptimizerConfig
 from utils import OptimizationVisualizer
 from config import get_default_config, validate_config
 
@@ -55,12 +64,12 @@ def clear_old_results(config: dict):
     results_dir = project_path.replace('.aedt', '.aedtresults')
     
     if os.path.exists(results_dir):
-        print(f"[INFO] Clearing old results: {results_dir}")
+        logger.info(f"[INFO] Clearing old results: {results_dir}")
         try:
             shutil.rmtree(results_dir)
-            print("[OK] Old results cleared")
+            logger.success(" Old results cleared")
         except Exception as e:
-            print(f"[WARN] Could not clear: {e}")
+            logger.info(f"[WARN] Could not clear: {e}")
 
 
 def load_evaluations_to_file(source_path: str, output_dir: str) -> int:
@@ -83,7 +92,7 @@ def load_evaluations_to_file(source_path: str, output_dir: str) -> int:
     # 如果目标文件已存在，说明已经在之前的运行中加载过，跳过
     if os.path.isfile(eval_file):
         existing_count = sum(1 for line in open(eval_file, 'r', encoding='utf-8') if line.strip())
-        print(f"[OK] evaluations.jsonl already exists with {existing_count} records, skipping load")
+        logger.info(f"[OK] evaluations.jsonl already exists with {existing_count} records, skipping load")
         return existing_count
     
     count = 0
@@ -121,23 +130,23 @@ def run_optimization(config: dict, algorithm: str = 'surrogate'):
     
     # 设置日志
     log_file = setup_logging(run_dir)
-    print(f"[OK] Log file: {log_file}")
+    logger.info(f"[OK] Log file: {log_file}")
     
     # 保存配置
     config_file = os.path.join(run_dir, 'config.json')
     with open(config_file, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
-    print(f"[OK] Config saved: {config_file}")
+    logger.info(f"[OK] Config saved: {config_file}")
     
     # 清除旧结果
     if config['run'].get('clear_old_results', False):
         clear_old_results(config)
     
     # 连接 HFSS
-    print("\n" + "=" * 60)
-    print("HFSS ANTENNA OPTIMIZATION")
-    print(f"Algorithm: {algorithm}")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("HFSS ANTENNA OPTIMIZATION")
+    logger.info(f"Algorithm: {algorithm}")
+    logger.info("=" * 60)
     
     hfss = HFSSController(
         config['hfss']['project_path'],
@@ -158,10 +167,10 @@ def run_optimization(config: dict, algorithm: str = 'surrogate'):
         if load_eval_path and os.path.isfile(load_eval_path):
             try:
                 loaded = load_evaluations_to_file(load_eval_path, run_dir)
-                print(f"[OK] Loaded {loaded} historical evaluations from: {load_eval_path}")
-                print(f"[OK] Copied to: {os.path.join(run_dir, 'evaluations.jsonl')}")
+                logger.info(f"[OK] Loaded {loaded} historical evaluations from: {load_eval_path}")
+                logger.info(f"[OK] Copied to: {os.path.join(run_dir, 'evaluations.jsonl')}")
             except Exception as e:
-                print(f"[WARN] Failed to load evaluations: {e}")
+                logger.info(f"[WARN] Failed to load evaluations: {e}")
         
         # 创建优化器
         algo_config = {**config['algorithm'], **config}
@@ -178,7 +187,8 @@ def run_optimization(config: dict, algorithm: str = 'surrogate'):
         else:
             total_evals = pop_size + pop_size * n_gen
         
-        print(f"[PROGRESS] TOTAL:{total_evals}")
+        print(f"[PROGRESS] TOTAL:{total_evals}", flush=True)
+        logger.info(f"[PROGRESS] TOTAL:{total_evals}")
         
         if algorithm == 'mobo':
             from algorithms import MultiObjectiveBayesianOptimizer
@@ -221,7 +231,8 @@ def run_optimization(config: dict, algorithm: str = 'surrogate'):
             iteration_count[0] += 1
             
             # 输出进度信息（便于GUI解析）
-            print(f"[PROGRESS] {iteration_count[0]}")
+            print(f"[PROGRESS] {iteration_count[0]}", flush=True)
+            logger.info(f"[PROGRESS] {iteration_count[0]}")
             
             # 确保 objectives 是一维列表（防御性处理）
             try:
@@ -238,7 +249,7 @@ def run_optimization(config: dict, algorithm: str = 'surrogate'):
                 # 验证 obj_list 包含的是数值
                 obj_list = [float(x) if not isinstance(x, (int, float)) else x for x in obj_list]
             except (ValueError, TypeError, AttributeError) as e:
-                print(f"[WARN] Failed to normalize objectives ({type(objectives)}): {e}")
+                logger.info(f"[WARN] Failed to normalize objectives ({type(objectives)}): {e}")
                 obj_list = [0.0]  # 默认值
             
             # 确保 surrogate_preds 是一维列表（防御性处理）
@@ -258,14 +269,14 @@ def run_optimization(config: dict, algorithm: str = 'surrogate'):
                     # 验证 surrogate_list 包含的是数值
                     surrogate_list = [float(x) if not isinstance(x, (int, float)) else x for x in surrogate_list]
                 except (ValueError, TypeError, AttributeError) as e:
-                    print(f"[WARN] Failed to normalize surrogate_preds ({type(surrogate_preds)}): {e}")
+                    logger.info(f"[WARN] Failed to normalize surrogate_preds ({type(surrogate_preds)}): {e}")
                     surrogate_list = None
             
             # 更新可视化
             try:
                 visualizer.update(iteration_count[0], params, obj_list, surrogate_preds=surrogate_list, is_surrogate_prediction=is_surrogate)
             except Exception as e:
-                print(f"[WARN] Visualization update failed: {e}")
+                logger.info(f"[WARN] Visualization update failed: {e}")
         
         # 运行优化（传递回调）
         start_time = time.time()
@@ -285,15 +296,15 @@ def run_optimization(config: dict, algorithm: str = 'surrogate'):
             json.dump(pareto_params, f, indent=2, ensure_ascii=False)
         
         # 打印摘要
-        print("\n" + "=" * 60)
-        print("OPTIMIZATION COMPLETE")
-        print("=" * 60)
-        print(f"Total time: {elapsed:.1f}s")
+        logger.info("\n" + "=" * 60)
+        logger.info("OPTIMIZATION COMPLETE")
+        logger.info("=" * 60)
+        logger.info(f"Total time: {elapsed:.1f}s")
         for key, val in stats.items():
-            print(f"  {key}: {val}")
+            logger.info(f"  {key}: {val}")
         
-        print(f"\nPareto front: {len(pareto_params)} solutions")
-        print(f"Results saved to: {run_dir}")
+        logger.info(f"\nPareto front: {len(pareto_params)} solutions")
+        logger.info(f"Results saved to: {run_dir}")
         
         # 分离真实仿真解和预测解
         real_solutions = [s for s in pareto_params if not s.get('is_predicted', False)]
@@ -305,46 +316,46 @@ def run_optimization(config: dict, algorithm: str = 'surrogate'):
         
         def print_solution(sol, idx, marker=""):
             """打印单个解"""
-            print(f"\n  Solution {idx}{marker}:")
+            logger.info(f"\n  Solution {idx}{marker}:")
             params = sol.get('parameters', sol.get('params', []))
             objectives = sol.get('objectives', {})
             
             if isinstance(params, list):
-                print(f"    Parameters:")
+                logger.info(f"    Parameters:")
                 for j, val in enumerate(params):
                     name = var_names[j] if j < len(var_names) else f'Var{j}'
-                    print(f"      {name}: {val:.4f}")
+                    logger.info(f"      {name}: {val:.4f}")
             else:
-                print(f"    Params: {params}")
+                logger.info(f"    Params: {params}")
             
             if isinstance(objectives, list):
-                print(f"    Objectives:")
+                logger.info(f"    Objectives:")
                 for j, val in enumerate(objectives):
                     name = obj_names[j] if j < len(obj_names) else f'Obj{j}'
                     target = obj_targets[j] if j < len(obj_targets) else 'minimize'
                     actual_val = -val if target == 'maximize' else val
-                    print(f"      {name}: {actual_val:.4f}")
+                    logger.info(f"      {name}: {actual_val:.4f}")
             elif isinstance(objectives, dict):
                 for name, res in objectives.items():
                     if isinstance(res, dict):
                         s = '[OK]' if res.get('goal_met') else '[FAIL]' if res.get('goal_met') is not None else ''
-                        print(f"    {name}: {res.get('actual_value', 0):.3f} {s}")
+                        logger.info(f"    {name}: {res.get('actual_value', 0):.3f} {s}")
                     else:
-                        print(f"    {name}: {res:.4f}")
+                        logger.info(f"    {name}: {res:.4f}")
         
         # 打印真实仿真解
-        print(f"\n--- REAL SIMULATION SOLUTIONS ({len(real_solutions)} solutions) ---")
+        logger.info(f"\n--- REAL SIMULATION SOLUTIONS ({len(real_solutions)} solutions) ---")
         for i, sol in enumerate(real_solutions[:5]):
             print_solution(sol, i + 1, " [REAL]")
         
         # 打印预测解
         if pred_solutions:
-            print(f"\n--- PREDICTED SOLUTIONS ({len(pred_solutions)} solutions) ---")
-            print(f"    [NOTE: Predicted values - NOT yet verified by real simulation]")
+            logger.info(f"\n--- PREDICTED SOLUTIONS ({len(pred_solutions)} solutions) ---")
+            logger.info(f"    [NOTE: Predicted values - NOT yet verified by real simulation]")
             for i, sol in enumerate(pred_solutions[:5]):
                 print_solution(sol, len(real_solutions) + i + 1, " [PREDICTED]")
         
-        print("\n" + "=" * 60)
+        logger.info("\n" + "=" * 60)
         
         return pareto_params
         
@@ -355,6 +366,7 @@ def run_optimization(config: dict, algorithm: str = 'surrogate'):
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(description='HFSS Antenna Optimizer')
+    parser.add_argument('--version', '-v', action='version', version=f'HFSS-Python-Optimizer v{__version__}')
     parser.add_argument('--algorithm', '-a', 
                         choices=['nsga2', 'surrogate', 'mopso', 'mobo', 'robust', 'adaptive'],
                         default='mopso',
@@ -382,8 +394,13 @@ def main():
     if args.config:
         if args.config.endswith('.json'):
             # 加载 JSON 配置
-            with open(args.config, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            config = OptimizerConfig.from_json(args.config)
+            # 校验配置
+            warnings = config.validate()
+            for w in warnings:
+                logger.warning(w)
+            # 转换为字典
+            config = config.model_dump()
         else:
             # 加载 Python 配置
             import importlib.util
@@ -409,9 +426,9 @@ def main():
     try:
         run_optimization(config, algorithm)
     except KeyboardInterrupt:
-        print("\n[WARN] Interrupted by user")
+        logger.info("\n[WARN] Interrupted by user")
     except Exception as e:
-        print(f"\n[ERROR] {e}")
+        logger.info(f"\n[ERROR] {e}")
         traceback.print_exc()
         sys.exit(1)
 

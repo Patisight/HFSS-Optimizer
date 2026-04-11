@@ -20,23 +20,40 @@ def test_message_api():
     try:
         import pyaedt
         print(f"\nPyAEDT 版本: {pyaedt.__version__}")
+        PYAEDT_NEW_API = False
     except ImportError:
-        print("无法导入 pyaedt")
-        return
+        # 新版 pyaedt (0.25+) 使用新的导入方式
+        try:
+            from ansys.aedt.core import Hfss as _Hfss
+            from ansys.aedt.core import __version__
+            print(f"\nPyAEDT 版本: {__version__} [new API]")
+            import ansys.aedt.core as pyaedt
+            PYAEDT_NEW_API = True
+        except ImportError:
+            print("无法导入 pyaedt")
+            return
     
     # 连接到 HFSS
     print(f"\n连接到项目: {PROJECT_PATH}")
     print(f"设计: {DESIGN_NAME}")
     
     try:
-        hfss = pyaedt.Hfss(
-            projectname=PROJECT_PATH,
-            designname=DESIGN_NAME,
-            solution_type="Terminal",
-            specified_version="2023.1",
-            new_desktop_session=False,
-            close_on_exit=False
-        )
+        if PYAEDT_NEW_API:
+            hfss = pyaedt.Hfss(
+                project=PROJECT_PATH,
+                design=DESIGN_NAME,
+                solution_type="Terminal",
+                new_desktop=True,
+            )
+        else:
+            hfss = pyaedt.Hfss(
+                projectname=PROJECT_PATH,
+                designname=DESIGN_NAME,
+                solution_type="Terminal",
+                specified_version="2023.1",
+                new_desktop_session=False,
+                close_on_exit=False
+            )
     except Exception as e:
         print(f"连接失败: {e}")
         return

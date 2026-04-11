@@ -12,6 +12,12 @@ import platform
 import shutil
 from pathlib import Path
 from typing import Optional, List, Dict, Tuple
+from loguru import logger
+
+PROJECT_ROOT = Path(__file__).parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+__version__ = "2026.4.8"
 
 
 class Colors:
@@ -28,34 +34,34 @@ class Colors:
 
 def print_header(text: str):
     """打印标题"""
-    print(f"\n{'='*60}")
-    print(f"{Colors.BOLD}{Colors.CYAN}{text}{Colors.END}")
-    print('='*60)
+    logger.info(f"\n{'='*60}")
+    logger.info(f"{Colors.BOLD}{Colors.CYAN}{text}{Colors.END}")
+    logger.info('='*60)
 
 
 def print_step(step: int, total: int, text: str):
     """打印步骤"""
-    print(f"\n{Colors.BOLD}[{step}/{total}] {text}{Colors.END}")
+    logger.info(f"\n{Colors.BOLD}[{step}/{total}] {text}{Colors.END}")
 
 
 def print_ok(text: str = "OK"):
     """打印成功"""
-    print(f"{Colors.GREEN}[OK] {text}{Colors.END}")
+    logger.info(f"{Colors.GREEN}[OK] {text}{Colors.END}")
 
 
 def print_warn(text: str):
     """打印警告"""
-    print(f"{Colors.YELLOW}[!] {text}{Colors.END}")
+    logger.info(f"{Colors.YELLOW}[!] {text}{Colors.END}")
 
 
 def print_error(text: str):
     """打印错误"""
-    print(f"{Colors.RED}[X] {text}{Colors.END}")
+    logger.info(f"{Colors.RED}[X] {text}{Colors.END}")
 
 
 def print_info(text: str):
     """打印信息"""
-    print(f"{Colors.BLUE}    {text}{Colors.END}")
+    logger.info(f"{Colors.BLUE}    {text}{Colors.END}")
 
 
 class EnvironmentSetup:
@@ -66,12 +72,14 @@ class EnvironmentSetup:
         'numpy': 'numpy>=1.21.0',
         'pandas': 'pandas>=1.3.0',
         'scipy': 'scipy>=1.7.0',
-        'pyaedt': 'pyaedt>=0.6.70',
+        'pyaedt': 'pyaedt>=0.7.0',
         'skopt': 'scikit-optimize>=0.9.0',
         'sklearn': 'scikit-learn>=1.0.0',
         'matplotlib': 'matplotlib>=3.5.0',
         'psutil': 'psutil>=5.8.0',
         'PyQt6': 'PyQt6>=6.0',
+        'loguru': 'loguru>=0.7.0',
+        'pydantic': 'pydantic>=2.0',
     }
     
     # 可选的依赖包
@@ -148,16 +156,31 @@ class EnvironmentSetup:
         
         for module, package in self.REQUIRED_PACKAGES.items():
             try:
-                mod = __import__(module)
-                version = getattr(mod, '__version__', 'unknown')
-                
-                # 特殊处理 pyaedt 版本
+                # 特殊处理 pyaedt（新版使用 ansys.aedt.core）
                 if module == 'pyaedt':
+                    try:
+                        import pyaedt
+                        version = getattr(pyaedt, '__version__', 'unknown')
+                    except ImportError:
+                        # 新版 pyaedt (0.25+) 使用新的导入方式
+                        try:
+                            from ansys.aedt.core import __version__
+                            version = __version__
+                            print_ok(f"pyaedt ({version}) [new API]")
+                            self._check_pyaedt_version(version)
+                            installed.append(module)
+                            continue
+                        except ImportError:
+                            raise ImportError("pyaedt not found")
+                    
                     print_ok(f"pyaedt ({version})")
                     self._check_pyaedt_version(version)
-                else:
-                    print_ok(f"{package.split('>=')[0]} ({version})")
+                    installed.append(module)
+                    continue
                 
+                mod = __import__(module)
+                version = getattr(mod, '__version__', 'unknown')
+                print_ok(f"{package.split('>=')[0]} ({version})")
                 installed.append(module)
             except ImportError:
                 print_error(f"{package} - 未安装")
@@ -174,19 +197,24 @@ class EnvironmentSetup:
             major = int(parts[0]) if len(parts) > 0 else 0
             minor = int(parts[1]) if len(parts) > 1 else 0
             
-            # HFSS 2023R1 (v231) 兼容的 pyaedt 版本
-            # 0.6.x - 0.8.x 或 0.20+ 应该都可以
+            # pyaedt 版本兼容性说明:
+            # - 0.7.x - 0.26.x: 当前稳定版本，兼容 HFSS 2022 R1+
+            # - 1.0+: 即将发布，API 有重大变化
             
             if major == 0:
-                if minor < 6:
-                    print_warn(f"pyaedt {version} 版本过旧，建议升级到 0.6.70+")
+                if minor < 7:
+                    print_warn(f"pyaedt {version} 版本过旧，建议升级到 0.7.0+")
+                    print_info("  推荐版本: pip install pyaedt>=0.7.0")
                     self.warnings.append(f"pyaedt 版本过旧 ({version})")
-                elif minor == 20:
-                    print_info(f"pyaedt {version} - 注意: 0.20.x 版本 API 可能有变化")
-                elif minor >= 6 and minor <= 8:
+                elif minor >= 7 and minor <= 26:
                     print_ok(f"pyaedt {version} 版本兼容")
                 else:
                     print_info(f"pyaedt {version} - 版本较新，请测试兼容性")
+            elif major >= 1:
+                print_warn(f"pyaedt {version} 是新主要版本")
+                print_info("  注意: pyaedt 1.0+ API 有重大变化，请检查代码兼容性")
+                print_info("  导入方式: from ansys.aedt.core import Hfss")
+                self.warnings.append(f"pyaedt {version} API 变化，请检查兼容性")
             
         except Exception as e:
             print_info(f"无法解析 pyaedt 版本: {version}")
@@ -274,14 +302,20 @@ class EnvironmentSetup:
         self.hfss_paths = hfss_paths
         return hfss_paths
     
-    def install_packages(self, packages: List[str]) -> bool:
-        """安装缺失的包"""
+    def install_packages(self, packages: List[str], upgrade: bool = False) -> bool:
+        """安装或更新包
+        
+        Args:
+            packages: 要安装的包列表
+            upgrade: 是否升级到最新版本
+        """
         if not packages:
             print_ok("所有依赖已安装，无需额外安装")
             return True
         
-        print_step(5, 6, "安装缺失的依赖包")
-        print_info(f"将安装: {', '.join(packages)}")
+        action = "更新" if upgrade else "安装"
+        print_step(5, 6, f"{action}依赖包")
+        print_info(f"将{action}: {', '.join(packages)}")
         print_info("这可能需要几分钟时间...\n")
         
         # 先升级 pip
@@ -291,28 +325,88 @@ class EnvironmentSetup:
             capture_output=True
         )
         
-        # 安装依赖
+        # 安装/更新依赖
         for package in packages:
-            print_info(f"安装 {package}...")
+            print_info(f"{action} {package}...")
             try:
+                # pyaedt 需要更长的超时时间（约 10 分钟）
+                timeout = 600 if 'pyaedt' in package else 300
+                
+                cmd = [sys.executable, '-m', 'pip', 'install']
+                if upgrade:
+                    cmd.append('--upgrade')
+                cmd.append(package)
+                
                 result = subprocess.run(
-                    [sys.executable, '-m', 'pip', 'install', package],
-                    capture_output=True, text=True, timeout=300
+                    cmd,
+                    capture_output=True, text=True, timeout=timeout
                 )
                 if result.returncode == 0:
-                    print_ok(f"{package} 安装成功")
+                    print_ok(f"{package} {action}成功")
                 else:
-                    print_error(f"{package} 安装失败")
-                    print_info(result.stderr[-500:] if len(result.stderr) > 500 else result.stderr)
-                    self.errors.append(f"{package} 安装失败")
+                    print_error(f"{package} {action}失败")
+                    if result.stderr:
+                        print_info(f"错误详情: {result.stderr[-500:]}")
+                    if result.stdout:
+                        print_info(f"输出: {result.stdout[-500:]}")
+                    self.errors.append(f"{package} {action}失败")
+                    if 'pyaedt' in package:
+                        print_warn("pyaedt 安装失败！请尝试手动安装：")
+                        print_info("  pip install pyaedt")
+                        print_info("  或指定版本: pip install pyaedt==0.6.70")
             except subprocess.TimeoutExpired:
-                print_error(f"{package} 安装超时")
-                self.errors.append(f"{package} 安装超时")
+                print_error(f"{package} {action}超时")
+                self.errors.append(f"{package} {action}超时")
+                if 'pyaedt' in package:
+                    print_warn("pyaedt 安装超时！请尝试手动安装：")
+                    print_info("  pip install pyaedt")
             except Exception as e:
-                print_error(f"{package} 安装异常: {e}")
-                self.errors.append(f"{package} 安装异常: {e}")
+                print_error(f"{package} {action}异常: {e}")
+                self.errors.append(f"{package} {action}异常: {e}")
         
         return len(self.errors) == 0
+    
+    def upgrade_all_packages(self) -> bool:
+        """升级所有必需依赖包到最新版本"""
+        print_header("升级所有依赖包到最新版本")
+        
+        # 获取所有包名（去掉版本号）
+        packages = [pkg.split('>=')[0].split('==')[0] for pkg in self.REQUIRED_PACKAGES.values()]
+        
+        print_info(f"将升级: {', '.join(packages)}")
+        print_info("这可能需要几分钟时间...\n")
+        
+        # 先升级 pip
+        print_info("升级 pip...")
+        subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'],
+            capture_output=True
+        )
+        
+        success = True
+        for package in packages:
+            print_info(f"升级 {package}...")
+            try:
+                timeout = 600 if package == 'pyaedt' else 300
+                result = subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', '--upgrade', package],
+                    capture_output=True, text=True, timeout=timeout
+                )
+                if result.returncode == 0:
+                    print_ok(f"{package} 升级成功")
+                else:
+                    print_error(f"{package} 升级失败")
+                    if result.stderr:
+                        print_info(f"错误: {result.stderr[-300:]}")
+                    success = False
+            except subprocess.TimeoutExpired:
+                print_error(f"{package} 升级超时")
+                success = False
+            except Exception as e:
+                print_error(f"{package} 升级异常: {e}")
+                success = False
+        
+        return success
     
     def create_default_config(self) -> bool:
         """创建默认配置文件"""
@@ -398,7 +492,7 @@ class EnvironmentSetup:
         success = True
         
         # 测试导入
-        print("测试模块导入...")
+        logger.info(f"测试模块导入...")
         test_imports = [
             ('numpy', 'np.array([1,2,3])'),
             ('pandas', 'pd.DataFrame([1,2,3])'),
@@ -417,20 +511,44 @@ class EnvironmentSetup:
                 success = False
         
         # 测试 pyaedt
-        print("\n测试 pyaedt...")
+        logger.info(f"\n测试 pyaedt...")
         try:
-            import pyaedt
-            print_ok(f"pyaedt ({pyaedt.__version__})")
+            try:
+                import pyaedt
+                print_ok(f"pyaedt ({pyaedt.__version__}) [legacy API]")
+            except ImportError:
+                # 新版 pyaedt (0.25+) 使用新的导入方式
+                from ansys.aedt.core import Hfss, __version__
+                print_ok(f"pyaedt ({__version__}) [new API]")
+                print_info("  注意: 新版 pyaedt 使用 from ansys.aedt.core import Hfss")
         except ImportError as e:
             print_error(f"pyaedt: {e}")
+            print_warn("\npyaedt 导入失败！可能的原因：")
+            print_info("  1. pyaedt 未安装成功，请尝试: pip install pyaedt")
+            print_info("  2. 网络问题，请使用国内镜像: pip install pyaedt -i https://pypi.tuna.tsinghua.edu.cn/simple")
+            print_info("  3. 缺少系统依赖（Windows 需要 .NET Framework）")
+            print_info("\n注意: 没有 pyaedt，程序无法连接 HFSS！")
+            success = False
+        except Exception as e:
+            print_error(f"pyaedt: {e}")
+            print_warn("pyaedt 加载异常，可能是系统环境问题")
             success = False
         
         return success
     
-    def run_full_setup(self, install: bool = True, install_surrogate: bool = False):
-        """运行完整配置流程"""
+    def run_full_setup(self, install: bool = True, install_surrogate: bool = False, upgrade: bool = False):
+        """运行完整配置流程
+        
+        Args:
+            install: 是否安装缺失依赖
+            install_surrogate: 是否安装代理模型增强依赖
+            upgrade: 是否升级所有依赖到最新版本
+        """
         print_header("HFSS 天线优化程序 - 一键环境配置")
-        print(f"时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        if upgrade:
+            print_info("模式: 升级所有依赖到最新版本\n")
         
         # 1. 检测 Python
         self.check_python()
@@ -450,20 +568,30 @@ class EnvironmentSetup:
         # 4. 检测 HFSS
         self.find_hfss()
         
-        # 5. 安装缺失依赖
-        if install and missing:
-            self.install_packages(missing)
-        
-        # 5.5 安装代理模型增强依赖（可选）
-        if install_surrogate and surrogate_missing:
-            print_info("\n安装代理模型增强依赖...")
-            self.install_packages(surrogate_missing)
+        # 5. 安装/升级依赖
+        if upgrade:
+            # 升级所有依赖到最新版本
+            self.upgrade_all_packages()
+            if install_surrogate:
+                print_info("\n升级代理模型增强依赖...")
+                self.install_packages(
+                    [pkg.split('>=')[0] for pkg in self.SURROGATE_ENHANCED_PACKAGES.values()],
+                    upgrade=True
+                )
+        elif install:
+            # 只安装缺失的
+            if missing:
+                self.install_packages(missing)
+            # 5.5 安装代理模型增强依赖（可选）
+            if install_surrogate and surrogate_missing:
+                print_info("\n安装代理模型增强依赖...")
+                self.install_packages(surrogate_missing)
         
         # 6. 创建默认配置
         self.create_default_config()
         
         # 验证安装
-        if install:
+        if install or upgrade:
             self.verify_installation()
         
         # 总结
@@ -475,26 +603,26 @@ class EnvironmentSetup:
         """打印总结"""
         print_header("配置总结")
         
-        print(f"Python: {self.python_version}")
-        print(f"pip: {self.pip_version or 'N/A'}")
-        print(f"缺失包: {len(self.missing_packages)}")
-        print(f"HFSS: {len(self.hfss_paths)} 个版本")
+        logger.info(f"Python: {self.python_version}")
+        logger.info(f"pip: {self.pip_version or 'N/A'}")
+        logger.info(f"缺失包: {len(self.missing_packages)}")
+        logger.info(f"HFSS: {len(self.hfss_paths)} 个版本")
         
         if self.warnings:
-            print(f"\n{Colors.YELLOW}警告:{Colors.END}")
+            logger.info(f"\n{Colors.YELLOW}警告:{Colors.END}")
             for w in self.warnings:
-                print(f"  - {w}")
+                logger.info(f"  - {w}")
         
         if self.errors:
-            print(f"\n{Colors.RED}错误:{Colors.END}")
+            logger.info(f"\n{Colors.RED}错误:{Colors.END}")
             for e in self.errors:
-                print(f"  - {e}")
-            print(f"\n{Colors.RED}配置未完成，请解决上述问题后重试{Colors.END}")
+                logger.info(f"  - {e}")
+            logger.info(f"\n{Colors.RED}配置未完成，请解决上述问题后重试{Colors.END}")
         else:
-            print(f"\n{Colors.GREEN}[OK] 环境配置完成！{Colors.END}")
-            print("\n接下来可以:")
-            print("  1. 编辑 user_config.json 配置项目路径和变量")
-            print("  2. 运行 启动优化程序.bat 开始优化")
+            logger.info(f"\n{Colors.GREEN}[OK] 环境配置完成！{Colors.END}")
+            logger.info(f"\n接下来可以:")
+            logger.info(f"  1. 编辑 user_config.json 配置项目路径和变量")
+            logger.info(f"  2. 运行 启动优化程序.bat 开始优化")
 
 
 def main():
@@ -504,6 +632,7 @@ def main():
     parser = argparse.ArgumentParser(description='HFSS 优化程序环境配置')
     parser.add_argument('--check', action='store_true', help='仅检测环境，不安装')
     parser.add_argument('--install', action='store_true', help='仅安装缺失依赖')
+    parser.add_argument('--upgrade', action='store_true', help='升级所有依赖到最新版本')
     parser.add_argument('--surrogate', action='store_true', help='安装代理模型增强依赖 (gpflow, tensorflow)')
     parser.add_argument('--full', action='store_true', help='完整安装（包括代理模型增强依赖）')
     
@@ -518,6 +647,9 @@ def main():
         setup.check_packages()
         setup.find_hfss()
         setup.print_summary()
+    elif args.upgrade:
+        # 升级所有依赖到最新版本
+        setup.run_full_setup(install=True, upgrade=True, install_surrogate=args.surrogate)
     elif args.install:
         # 仅安装
         _, missing = setup.check_packages()

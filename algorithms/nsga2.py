@@ -3,6 +3,7 @@ NSGA-II 多目标优化算法
 """
 import numpy as np
 from typing import Dict, List, Optional, Tuple
+from loguru import logger
 from .base import BaseOptimizer
 
 
@@ -32,10 +33,10 @@ class NSGA2(BaseOptimizer):
         Returns:
             Pareto 前沿解列表
         """
-        print("\n" + "=" * 60)
-        print("NSGA-II MULTIOBJECTIVE OPTIMIZATION")
-        print(f"Population: {self.population_size}, Generations: {self.n_generations}")
-        print("=" * 60)
+        logger.info(f"\n" + "=" * 60)
+        logger.info(f"NSGA-II MULTIOBJECTIVE OPTIMIZATION")
+        logger.info(f"Population: {self.population_size}, Generations: {self.n_generations}")
+        logger.info(f"=" * 60)
         
         # 初始化种群
         population = self._initialize_population()
@@ -43,7 +44,7 @@ class NSGA2(BaseOptimizer):
         all_results = []
         
         # 评估初始种群
-        print("\n[Generation 0] Evaluating initial population...")
+        logger.info(f"\n[Generation 0] Evaluating initial population...")
         for i, ind in enumerate(population):
             result = self._evaluate_with_cache(ind, evaluator)
             if result is not None:
@@ -57,15 +58,15 @@ class NSGA2(BaseOptimizer):
         # 初始化后早停检查
         if self.stop_when_goal_met:
             goals_count = self.count_solutions_meeting_goals(all_results)
-            print(f"[INFO] Goals check: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+            logger.info(f"[INFO] Goals check: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
             if goals_count >= self.n_solutions_to_stop:
-                print(f"\n[INFO] Early stop after initialization: {goals_count} solutions meet goals")
+                logger.info(f"\n[INFO] Early stop after initialization: {goals_count} solutions meet goals")
                 fronts = self.fast_non_dominated_sort(population, objectives)
                 return self._extract_pareto_params(fronts[0], population, all_results)
         
         # 主循环
         for gen in range(self.n_generations):
-            print(f"\n[Generation {gen + 1}/{self.n_generations}]")
+            logger.info(f"\n[Generation {gen + 1}/{self.n_generations}]")
             
             # 非支配排序
             fronts = self.fast_non_dominated_sort(population, objectives)
@@ -96,13 +97,13 @@ class NSGA2(BaseOptimizer):
             # 早停检查
             if self.should_stop_early(all_results):
                 goals_count = self.count_solutions_meeting_goals(all_results)
-                print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                logger.info(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
                 break
             
             # 打印 Pareto 前沿
             current_fronts = self.fast_non_dominated_sort(population, objectives)
             if current_fronts and current_fronts[0]:
-                print(f"  Pareto front: {len(current_fronts[0])} solutions")
+                logger.info(f"  Pareto front: {len(current_fronts[0])} solutions")
         
         # 整理结果
         fronts = self.fast_non_dominated_sort(population, objectives)
@@ -143,7 +144,7 @@ class NSGA2(BaseOptimizer):
             params_dict = {v['name']: params[i] for i, v in enumerate(self.variables)}
             valid, msg = self.constraint_mgr.check_constraints(params_dict)
             if not valid:
-                print(f"[CONSTRAINT VIOLATION] {msg} -> returning penalty")
+                logger.info(f"[CONSTRAINT VIOLATION] {msg} -> returning penalty")
                 penalty = self.get_penalty_objectives()
                 result = tuple(penalty)
                 self._add_to_cache(params, result)
@@ -160,8 +161,8 @@ class NSGA2(BaseOptimizer):
                     evaluator.hfss.set_variable(var['name'], params[i], var.get('unit', 'mm'))
                 break
             except RuntimeError as e:
-                print(f"[ERROR] Failed to set variable: {e}")
-                print(f"[INFO] HFSS disconnected, waiting to reconnect...")
+                logger.error(f"[ERROR] Failed to set variable: {e}")
+                logger.info(f"[INFO] HFSS disconnected, waiting to reconnect...")
                 import time
                 time.sleep(10)
                 continue
@@ -171,10 +172,10 @@ class NSGA2(BaseOptimizer):
             try:
                 if evaluator.hfss.analyze(force=True):
                     break
-                print(f"[WARN] Analysis returned False, retrying...")
+                logger.warning(f"[WARN] Analysis returned False, retrying...")
             except Exception as e:
-                print(f"[ERROR] Analysis failed: {e}")
-            print(f"[INFO] HFSS disconnected, waiting to reconnect...")
+                logger.error(f"[ERROR] Analysis failed: {e}")
+            logger.info(f"[INFO] HFSS disconnected, waiting to reconnect...")
             import time
             time.sleep(10)
             continue
@@ -188,8 +189,8 @@ class NSGA2(BaseOptimizer):
                 result = evaluator.evaluate_all(params)
                 break
             except RuntimeError as e:
-                print(f"[ERROR] Evaluation failed: {e}")
-                print(f"[INFO] HFSS disconnected, waiting to reconnect...")
+                logger.error(f"[ERROR] Evaluation failed: {e}")
+                logger.info(f"[INFO] HFSS disconnected, waiting to reconnect...")
                 import time
                 time.sleep(10)
                 continue
@@ -377,4 +378,4 @@ class NSGA2(BaseOptimizer):
             else:
                 s = ''
             parts.append(f"{name}={actual:.2f}{s}")
-        print(f"  {prefix} {idx}: {', '.join(parts)}")
+        logger.info(f"  {prefix} {idx}: {', '.join(parts)}")

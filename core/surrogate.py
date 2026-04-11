@@ -63,7 +63,7 @@ class SurrogateModel:
             self.model = self.models
             
         except ImportError:
-            print("[WARN] sklearn not available, using simple interpolation")
+            logger.warning(" sklearn not available, using simple interpolation")
             self.model = None
     
     def _train_rf(self, X: np.ndarray, y: np.ndarray):
@@ -83,7 +83,7 @@ class SurrogateModel:
             self.model = self.models
             
         except ImportError:
-            print("[WARN] sklearn not available, using simple interpolation")
+            logger.warning(" sklearn not available, using simple interpolation")
             self.model = None
     
     def predict(self, X: np.ndarray, return_std: bool = False) -> Tuple[np.ndarray, Optional[np.ndarray]]:
@@ -255,7 +255,7 @@ class SurrogateManager:
         # 数据筛选：过滤异常值
         if self._should_filter_sample(y):
             self.filtered_count += 1
-            print(f"[SurrogateManager] Filtered sample with abnormal objective value (total filtered: {self.filtered_count})")
+            logger.info(" Filtered sample with abnormal objective value (total filtered: {self.filtered_count})")
             return
         
         self.X_samples.append(X.flatten() if hasattr(X, 'flatten') else list(X))
@@ -264,9 +264,9 @@ class SurrogateManager:
         # 样本足够时训练模型
         if len(self.X_samples) >= self.min_samples_to_train:
             if not self.surrogate.is_trained:
-                print(f"[SurrogateManager] Training with {len(self.X_samples)} samples...")
+                logger.info(" Training with {len(self.X_samples)} samples...")
                 self._retrain()
-                print(f"[SurrogateManager] Model trained and ready!")
+                logger.info(" Model trained and ready!")
             elif retrain:
                 # 显式要求重新训练
                 self._retrain()
@@ -274,11 +274,11 @@ class SurrogateManager:
     def retrain_all(self):
         """使用所有累积的样本重新训练模型"""
         if len(self.X_samples) >= self.min_samples_to_train:
-            print(f"[SurrogateManager] Retraining with all {len(self.X_samples)} samples...")
+            logger.info(" Retraining with all {len(self.X_samples)} samples...")
             self._retrain()
-            print(f"[SurrogateManager] Model retrained!")
+            logger.info(" Model retrained!")
         else:
-            print(f"[WARN] Not enough samples to train: {len(self.X_samples)} < {self.min_samples_to_train}")
+            logger.info(f"[WARN] Not enough samples to train: {len(self.X_samples)} < {self.min_samples_to_train}")
     
     def _retrain(self):
         """重新训练模型"""
@@ -286,10 +286,10 @@ class SurrogateManager:
         y = np.array(self.y_samples)
         
         # 打印训练数据统计
-        print(f"[SurrogateManager] Training data shape: X={X.shape}, y={y.shape}")
-        print(f"[SurrogateManager] Objective ranges:")
+        logger.info(" Training data shape: X={X.shape}, y={y.shape}")
+        logger.info(" Objective ranges:")
         for i in range(y.shape[1]):
-            print(f"  Objective {i}: min={y[:, i].min():.4f}, max={y[:, i].max():.4f}, mean={y[:, i].mean():.4f}, std={y[:, i].std():.4f}")
+            logger.info(f"  Objective {i}: min={y[:, i].min():.4f}, max={y[:, i].max():.4f}, mean={y[:, i].mean():.4f}, std={y[:, i].std():.4f}")
         
         self.surrogate.train(X, y)
     
@@ -366,9 +366,9 @@ class SurrogateManager:
         use_surrogate = normalized_uncertainty < uncertainty_threshold
         
         if use_surrogate:
-            print(f"[Surrogate] Using surrogate (uncertainty={normalized_uncertainty:.3f} < {uncertainty_threshold})")
+            logger.info(" Using surrogate (uncertainty={normalized_uncertainty:.3f} < {uncertainty_threshold})")
         else:
-            print(f"[Surrogate] Using real simulation (uncertainty={normalized_uncertainty:.3f} >= {uncertainty_threshold})")
+            logger.info(" Using real simulation (uncertainty={normalized_uncertainty:.3f} >= {uncertainty_threshold})")
         
         return use_surrogate, normalized_uncertainty
     
@@ -638,16 +638,16 @@ class IncrementalSurrogateManager:
 
         if len(self.X_samples) < self.min_samples_to_train:
             if len(self.X_samples) == 1:
-                print(f"[IncrementalSurrogate] Collecting samples... ({len(self.X_samples)}/{self.min_samples_to_train})")
+                logger.info(" Collecting samples... ({len(self.X_samples)}/{self.min_samples_to_train})")
             return
 
         X_arr = np.array(self.X_samples)
         y_arr = np.array(self.y_samples)
 
         if not self.surrogate.is_trained:
-            print(f"[IncrementalSurrogate] Initial training with {len(self.X_samples)} samples...")
+            logger.info(" Initial training with {len(self.X_samples)} samples...")
             self.surrogate.train(X_arr, y_arr)
-            print(f"[IncrementalSurrogate] Model ready!")
+            logger.info(" Model ready!")
         else:
             self.surrogate.partial_fit(X_arr[-1:], y_arr[-1:])
 
@@ -673,9 +673,9 @@ class IncrementalSurrogateManager:
         if len(self.X_samples) >= self.min_samples_to_train:
             X_arr = np.array(self.X_samples)
             y_arr = np.array(self.y_samples)
-            print(f"[IncrementalSurrogate] Retraining with {len(self.X_samples)} samples...")
+            logger.info(" Retraining with {len(self.X_samples)} samples...")
             self.surrogate.train(X_arr, y_arr)
-            print(f"[IncrementalSurrogate] Model retrained!")
+            logger.info(" Model retrained!")
 
 
 class GPflowSVSurrogate:
@@ -782,8 +782,8 @@ class GPflowSVSurrogate:
             self.gpflow = gpflow
         except ImportError:
             self._gpflow_available = False
-            print("[WARN] GPflow not installed. Install with: pip install gpflow tensorflow")
-            print("[WARN] Falling back to basic incremental surrogate or disable incremental mode.")
+            logger.warning(" GPflow not installed. Install with: pip install gpflow tensorflow")
+            logger.warning(" Falling back to basic incremental surrogate or disable incremental mode.")
 
     def _build_kernel(self, y_var: float = None):
         """构建核函数
@@ -829,7 +829,7 @@ class GPflowSVSurrogate:
                 kmeans.fit(X)
                 self.inducing_inputs = kmeans.cluster_centers_.copy()
             except Exception as e:
-                print(f"[WARN] KMeans clustering failed ({e}), falling back to random init")
+                logger.info(f"[WARN] KMeans clustering failed ({e}), falling back to random init")
                 self.inducing_inputs = np.random.randn(n_inducing, self.n_dims) * 0.5
         else:
             self.inducing_inputs = np.random.randn(n_inducing, self.n_dims) * 0.5
@@ -873,7 +873,7 @@ class GPflowSVSurrogate:
                 options=dict(maxiter=effective_max_iter, disp=False),
             )
         except TypeError as e:
-            print(f"[WARN] GPflow optimizer kwargs changed ({e}), retrying...")
+            logger.info(f"[WARN] GPflow optimizer kwargs changed ({e}), retrying...")
             try:
                 from gpflow.optimizers import Scipy
                 optimizer = Scipy()
@@ -894,23 +894,23 @@ class GPflowSVSurrogate:
                 for _ in range(n_steps):
                     optimizer.minimize(model.training_loss_closure((X, y)), var_list=model.trainable_variables)
         except Exception as e:
-            print(f"[WARN] GPflow training failed: {e}")
+            logger.info(f"[WARN] GPflow training failed: {e}")
             raise
         
         lik_var = model.likelihood.variance.numpy()
         if lik_var < min_lik_var:
-            print(f"[GPflowSVGP] WARNING: likelihood variance {lik_var:.6f} < {min_lik_var:.6f}, clamping up!")
+            logger.info(f"[GPflowSVGP] WARNING: likelihood variance {lik_var:.6f} < {min_lik_var:.6f}, clamping up!")
             model.likelihood.variance.assign(min_lik_var)
             lik_var = min_lik_var
         
         outputscale = model.kernel.variance.numpy()
         min_outputscale = max(y_var * 0.05, 0.1)
         if outputscale < min_outputscale:
-            print(f"[GPflowSVGP] WARNING: kernel outputscale {outputscale:.6f} < {min_outputscale:.6f}, clamping up!")
+            logger.info(f"[GPflowSVGP] WARNING: kernel outputscale {outputscale:.6f} < {min_outputscale:.6f}, clamping up!")
             model.kernel.variance.assign(min_outputscale)
             outputscale = min_outputscale
         
-        print(f"[GPflowSVGP] Final: likelihood_var={lik_var:.6f}, outputscale={outputscale:.6f}")
+        logger.info(f"[GPflowSVGP] Final: likelihood_var={lik_var:.6f}, outputscale={outputscale:.6f}")
 
     def train(self, X: np.ndarray, y: np.ndarray, max_iter: int = 500):
         """
@@ -937,20 +937,20 @@ class GPflowSVSurrogate:
         self._iteration += 1
 
         n_objectives = y.shape[1] if y.ndim > 1 else 1
-        print(f"[GPflowSVGP] Training {n_objectives} objectives with {X.shape[0]} samples, {max_iter} iterations each...")
+        logger.info(f"[GPflowSVGP] Training {n_objectives} objectives with {X.shape[0]} samples, {max_iter} iterations each...")
         
         for i, model in enumerate(self.models):
             y_i = y[:, i] if y.ndim > 1 else y.flatten()
-            print(f"[GPflowSVGP] Training objective {i+1}/{n_objectives}...")
+            logger.info(f"[GPflowSVGP] Training objective {i+1}/{n_objectives}...")
             try:
                 self._train_model(model, X_scaled, y_i, max_iter)
-                print(f"[GPflowSVGP] Objective {i+1}/{n_objectives} trained successfully")
+                logger.info(f"[GPflowSVGP] Objective {i+1}/{n_objectives} trained successfully")
             except Exception as e:
-                print(f"[WARN] Model {i} training failed: {e}")
+                logger.info(f"[WARN] Model {i} training failed: {e}")
                 raise
 
         self.is_trained = True
-        print(f"[GPflowSVGP] All objectives trained successfully")
+        logger.info(f"[GPflowSVGP] All objectives trained successfully")
         
         self._log_model_params()
     
@@ -974,7 +974,7 @@ class GPflowSVSurrogate:
                 with open(self._model_params_file, 'a') as f:
                     f.write(row)
         except Exception as e:
-            print(f"[WARN] Failed to log model params: {e}")
+            logger.info(f"[WARN] Failed to log model params: {e}")
     
     def _log_prediction(self, X: np.ndarray, y_pred: np.ndarray, y_std: np.ndarray, y_actual: np.ndarray = None):
         """记录预测结果到诊断日志"""
@@ -1003,7 +1003,7 @@ class GPflowSVSurrogate:
             with open(self._diag_file, 'a') as f:
                 f.write(row)
         except Exception as e:
-            print(f"[WARN] Failed to log prediction: {e}")
+            logger.info(f"[WARN] Failed to log prediction: {e}")
     
     def log_training_sample(self, X: np.ndarray, y_actual: np.ndarray):
         """在训练样本上进行预测并记录，用于验证模型是否正常
@@ -1023,19 +1023,19 @@ class GPflowSVSurrogate:
             unc_mean = float(np.mean(y_std))
             
             if pred_range < 1e-6:
-                print(f"[WARN] Model predictions nearly constant! range={pred_range:.2e}")
+                logger.info(f"[WARN] Model predictions nearly constant! range={pred_range:.2e}")
             
             if len(y_pred) == len(y_actual):
                 pred_error = float(np.mean(np.abs(y_pred - y_actual.flatten())))
                 if pred_error > 1.0 and unc_mean < 0.5:
-                    print(f"[CRITICAL] Model prediction error={pred_error:.3f} but uncertainty={unc_mean:.3f} - DANGER: overconfident!")
-                    print(f"[CRITICAL] This means model is WRONG but THINKS it's RIGHT!")
+                    logger.info(f"[CRITICAL] Model prediction error={pred_error:.3f} but uncertainty={unc_mean:.3f} - DANGER: overconfident!")
+                    logger.info(f"[CRITICAL] This means model is WRONG but THINKS it's RIGHT!")
             
             if unc_mean < 1e-4:
-                print(f"[WARN] Model uncertainty extremely low! mean={unc_mean:.2e}")
+                logger.info(f"[WARN] Model uncertainty extremely low! mean={unc_mean:.2e}")
                 
         except Exception as e:
-            print(f"[WARN] Failed to log training sample: {e}")
+            logger.info(f"[WARN] Failed to log training sample: {e}")
 
     def partial_fit(self, X_new: np.ndarray, y_new: np.ndarray, n_iter: int = None):
         """
@@ -1062,19 +1062,19 @@ class GPflowSVSurrogate:
         self.y_samples.append(y_new.flatten().tolist())
 
         if not self.is_trained:
-            print("[GPflowSVGP] Model not trained yet, performing initial training...")
+            logger.info("[GPflowSVGP] Model not trained yet, performing initial training...")
             self.train(np.array(self.X_samples), np.array(self.y_samples))
             return
 
-        print(f"[GPflowSVGP] Full retraining with {len(self.X_samples)} samples, {n_iter} iterations...")
+        logger.info(f"[GPflowSVGP] Full retraining with {len(self.X_samples)} samples, {n_iter} iterations...")
         try:
             X_all = np.array(self.X_samples)
             y_all = np.array(self.y_samples)
             self.train(X_all, y_all, max_iter=n_iter)
-            print(f"[GPflowSVGP] Model updated successfully")
+            logger.info(f"[GPflowSVGP] Model updated successfully")
         except Exception as e:
-            print(f"[WARN] Full retraining failed: {e}")
-            print(f"[WARN] Model state may be inconsistent")
+            logger.info(f"[WARN] Full retraining failed: {e}")
+            logger.info(f"[WARN] Model state may be inconsistent")
 
     def predict(self, X: np.ndarray, return_std: bool = False) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """
@@ -1117,7 +1117,7 @@ class GPflowSVSurrogate:
                     if return_std:
                         std[:, i] = pred_result.stddev().numpy().flatten()
             except Exception as e:
-                print(f"[WARN] Prediction failed for model {i}: {e}")
+                logger.info(f"[WARN] Prediction failed for model {i}: {e}")
                 mean[:, i] = 0
                 if return_std:
                     std[:, i] = 1
@@ -1210,36 +1210,36 @@ class GPflowSVSManager:
         # 数据筛选：过滤异常值
         if self._should_filter_sample(y):
             self.filtered_count += 1
-            print(f"[GPflowSVGP] Filtered sample with abnormal objective value (total filtered: {self.filtered_count})")
+            logger.info(f"[GPflowSVGP] Filtered sample with abnormal objective value (total filtered: {self.filtered_count})")
             return
         
         self.X_samples.append(X.flatten() if hasattr(X, 'flatten') else list(X))
         self.y_samples.append(y.flatten() if hasattr(y, 'flatten') else list(y))
 
         if len(self.X_samples) < self.min_samples_to_train:
-            print(f"[GPflowSVGP] Collecting samples... ({len(self.X_samples)}/{self.min_samples_to_train})")
+            logger.info(f"[GPflowSVGP] Collecting samples... ({len(self.X_samples)}/{self.min_samples_to_train})")
             return
 
         X_arr = np.array(self.X_samples)
         y_arr = np.array(self.y_samples)
 
         if not self.surrogate.is_trained:
-            print(f"[GPflowSVGP] Initial training with {len(self.X_samples)} samples...")
+            logger.info(f"[GPflowSVGP] Initial training with {len(self.X_samples)} samples...")
             try:
                 self.surrogate.train(X_arr, y_arr)
-                print(f"[GPflowSVGP] Model ready!")
+                logger.info(f"[GPflowSVGP] Model ready!")
             except Exception as e:
-                print(f"[GPflowSVGP] Training failed: {e}")
-                print(f"[GPflowSVGP] Will retry with next sample...")
+                logger.info(f"[GPflowSVGP] Training failed: {e}")
+                logger.info(f"[GPflowSVGP] Will retry with next sample...")
                 self.surrogate.is_trained = False
         else:
-            print(f"[GPflowSVGP] Updating model with new sample (total: {len(self.X_samples)})...")
+            logger.info(f"[GPflowSVGP] Updating model with new sample (total: {len(self.X_samples)})...")
             try:
                 self.surrogate.partial_fit(X, y)
                 if self.surrogate._diag_enabled:
                     self.surrogate.log_training_sample(X_arr[-1:], y_arr[-1:])
             except Exception as e:
-                print(f"[WARN] Model update failed: {e}")
+                logger.info(f"[WARN] Model update failed: {e}")
 
     def predict(self, X: np.ndarray, return_std: bool = False) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """预测"""
@@ -1264,9 +1264,9 @@ class GPflowSVSManager:
         if len(self.X_samples) >= self.min_samples_to_train:
             X_arr = np.array(self.X_samples)
             y_arr = np.array(self.y_samples)
-            print(f"[GPflowSVGP] Retraining with {len(self.X_samples)} samples...")
+            logger.info(f"[GPflowSVGP] Retraining with {len(self.X_samples)} samples...")
             try:
                 self.surrogate.train(X_arr, y_arr)
-                print(f"[GPflowSVGP] Model retrained!")
+                logger.info(f"[GPflowSVGP] Model retrained!")
             except Exception as e:
-                print(f"[GPflowSVGP] Retraining failed: {e}")
+                logger.info(f"[GPflowSVGP] Retraining failed: {e}")

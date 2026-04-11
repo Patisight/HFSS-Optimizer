@@ -253,27 +253,27 @@ def validate_config(config: Dict) -> bool:
     
     for key in required_keys:
         if key not in config:
-            print(f"[ERROR] Missing config key: {key}")
+            logger.error(f"[ERROR] Missing config key: {key}")
             return False
     
     # 检查变量
     if not config['variables']:
-        print("[ERROR] No variables defined")
+        logger.error(f"[ERROR] No variables defined")
         return False
     
     for var in config['variables']:
         if 'name' not in var or 'bounds' not in var:
-            print(f"[ERROR] Invalid variable: {var}")
+            logger.error(f"[ERROR] Invalid variable: {var}")
             return False
     
     # 检查目标
     if not config['objectives']:
-        print("[ERROR] No objectives defined")
+        logger.error(f"[ERROR] No objectives defined")
         return False
     
     for obj in config['objectives']:
         if 'type' not in obj or 'name' not in obj:
-            print(f"[ERROR] Invalid objective: {obj}")
+            logger.error(f"[ERROR] Invalid objective: {obj}")
             return False
     
     return True

@@ -8,6 +8,7 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
+from loguru import logger
 
 # 导入公式模块
 from utils.formula import (
@@ -55,7 +56,7 @@ class ObjectiveEvaluator:
             # 清空或创建文件
             with open(self.eval_file, 'w') as f:
                 pass  # 创建空文件
-            print(f"[OK] Evaluation log: {self.eval_file}")
+            logger.info(f"[OK] Evaluation log: {self.eval_file}")
         else:
             self.eval_file = None
     
@@ -66,7 +67,7 @@ class ObjectiveEvaluator:
         self.eval_file = os.path.join(output_dir, 'evaluations.jsonl')
         with open(self.eval_file, 'w') as f:
             pass
-        print(f"[OK] Evaluation log: {self.eval_file}")
+        logger.info(f"[OK] Evaluation log: {self.eval_file}")
     
     def _save_evaluation(self, params: np.ndarray, results: Dict[str, ObjectiveResult]):
         """保存每次评估的详细数据"""
@@ -100,7 +101,7 @@ class ObjectiveEvaluator:
         with open(self.eval_file, 'a') as f:
             f.write(json.dumps(data, ensure_ascii=False) + '\n')
         
-        print(f"[SAVED] Eval #{self.eval_count} -> {self.eval_file}")
+        logger.info(f"[SAVED] Eval #{self.eval_count} -> {self.eval_file}")
     
     def clear_cache(self):
         """清除缓存"""
@@ -120,7 +121,7 @@ class ObjectiveEvaluator:
         if self.hfss and hasattr(self.hfss, 'ensure_connection'):
             connection_ok = self.hfss.ensure_connection()
             if connection_ok and not self._last_hfss_connection_ok:
-                print("[INFO] HFSS reconnected, clearing cached data")
+                logger.info(" HFSS reconnected, clearing cached data")
                 self.clear_cache()
             self._last_hfss_connection_ok = connection_ok
         
@@ -176,10 +177,10 @@ class ObjectiveEvaluator:
             )
             
         except RuntimeError as e:
-            print(f"[ERROR] Evaluate {name}: HFSS connection error - {e}")
+            logger.info(f"[ERROR] Evaluate {name}: HFSS connection error - {e}")
             raise
         except Exception as e:
-            print(f"[WARN] Evaluate {name}: {e}")
+            logger.info(f"[WARN] Evaluate {name}: {e}")
             return ObjectiveResult(
                 name=name,
                 value=1000.0,
@@ -273,7 +274,7 @@ class ObjectiveEvaluator:
         # 首先确定需要哪些端口
         formula = obj.get('formula', '')
         if not formula:
-            print("[WARN] _get_formula_s_data: no formula in obj")
+            logger.warning(" _get_formula_s_data: no formula in obj")
             return None
         
         # 解析公式找出需要的 S 参数和 Z 参数
@@ -282,7 +283,7 @@ class ObjectiveEvaluator:
         z_params = re.findall(r'Z\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)', formula)
         
         if not s_params and not z_params:
-            print(f"[WARN] _get_formula_s_data: no S or Z params found in formula '{formula}'")
+            logger.info(f"[WARN] _get_formula_s_data: no S or Z params found in formula '{formula}'")
             return None
         
         # 收集所有需要的端口
@@ -316,7 +317,7 @@ class ObjectiveEvaluator:
             freq = z_data['freq']
         
         if freq is None:
-            print("[WARN] _get_formula_s_data: freq is None from both S and Z data")
+            logger.warning(" _get_formula_s_data: freq is None from both S and Z data")
             return None
         
         # 创建 FormulaSData 对象
@@ -332,12 +333,12 @@ class ObjectiveEvaluator:
                 real_data = port_data.get('real')
                 imag_data = port_data.get('imag')
                 if real_data is None or imag_data is None:
-                    print(f"[WARN] _get_formula_s_data: S({row},{col}) real or imag is None")
+                    logger.info(f"[WARN] _get_formula_s_data: S({row},{col}) real or imag is None")
                     continue
                 try:
                     formula_s_data.set_s_param(row, col, real_data, imag_data)
                 except ValueError as e:
-                    print(f"[WARN] _get_formula_s_data: set_s_param failed for S({row},{col}): {e}")
+                    logger.info(f"[WARN] _get_formula_s_data: set_s_param failed for S({row},{col}): {e}")
                     continue
         
         # 设置每个 Z 参数
@@ -347,17 +348,17 @@ class ObjectiveEvaluator:
                 real_data = port_data.get('real')
                 imag_data = port_data.get('imag')
                 if real_data is None or imag_data is None:
-                    print(f"[WARN] _get_formula_s_data: Z({row},{col}) real or imag is None")
+                    logger.info(f"[WARN] _get_formula_s_data: Z({row},{col}) real or imag is None")
                     continue
                 try:
                     formula_s_data.set_z_param(row, col, real_data, imag_data)
                 except ValueError as e:
-                    print(f"[WARN] _get_formula_s_data: set_z_param failed for Z({row},{col}): {e}")
+                    logger.info(f"[WARN] _get_formula_s_data: set_z_param failed for Z({row},{col}): {e}")
                     continue
         
         # 检查是否成功添加了任何 S 参数或 Z 参数
         if not formula_s_data.data and not formula_s_data.z_data:
-            print("[WARN] _get_formula_s_data: no S or Z parameters were set")
+            logger.warning(" _get_formula_s_data: no S or Z parameters were set")
             return None
         
         return formula_s_data
@@ -374,19 +375,19 @@ class ObjectiveEvaluator:
         """
         formula = obj.get('formula', '')
         if not formula:
-            print(f"[WARN] _evaluate_formula: no formula in objective '{obj.get('name', 'unknown')}'")
+            logger.info(f"[WARN] _evaluate_formula: no formula in objective '{obj.get('name', 'unknown')}'")
             return 1000.0, 1000.0
         
         # 获取公式 S 参数数据
         full_s_data = self._get_formula_s_data(obj)
         if full_s_data is None:
-            print(f"[WARN] _evaluate_formula: failed to get S-parameter data for formula '{formula}' in objective '{obj.get('name', 'unknown')}'")
+            logger.info(f"[WARN] _evaluate_formula: failed to get S-parameter data for formula '{formula}' in objective '{obj.get('name', 'unknown')}'")
             return 1000.0, 1000.0
         
         # 确定频率范围
         freq = full_s_data.freq
         if freq is None or len(freq) == 0:
-            print("[WARN] _evaluate_formula: freq is None or empty")
+            logger.warning(" _evaluate_formula: freq is None or empty")
             return 1000.0, 1000.0
         
         if 'freq_range' in obj and obj['freq_range']:
@@ -403,7 +404,7 @@ class ObjectiveEvaluator:
         
         # 检查 mask 是否有效
         if not np.any(mask):
-            print("[WARN] _evaluate_formula: no frequency points match the mask")
+            logger.warning(" _evaluate_formula: no frequency points match the mask")
             return 1000.0, 1000.0
         
         # 根据频率掩码筛选数据
@@ -418,7 +419,7 @@ class ObjectiveEvaluator:
             real = port_data.get('real')
             imag = port_data.get('imag')
             if real is None or imag is None:
-                print(f"[WARN] _evaluate_formula: S({row},{col}) real or imag is None")
+                logger.info(f"[WARN] _evaluate_formula: S({row},{col}) real or imag is None")
                 continue
             if len(real) == len(mask):
                 real = real[mask]
@@ -430,7 +431,7 @@ class ObjectiveEvaluator:
             real = port_data.get('real')
             imag = port_data.get('imag')
             if real is None or imag is None:
-                print(f"[WARN] _evaluate_formula: Z({row},{col}) real or imag is None")
+                logger.info(f"[WARN] _evaluate_formula: Z({row},{col}) real or imag is None")
                 continue
             if len(real) == len(mask):
                 real = real[mask]
@@ -439,7 +440,7 @@ class ObjectiveEvaluator:
         
         # 检查是否成功设置了 S 参数或 Z 参数
         if not s_data.data and not s_data.z_data:
-            print("[WARN] _evaluate_formula: no S parameters were set after filtering")
+            logger.warning(" _evaluate_formula: no S parameters were set after filtering")
             return 1000.0, 1000.0
         
         # 创建公式计算器
@@ -448,7 +449,6 @@ class ObjectiveEvaluator:
         try:
             result = evaluator.evaluate(formula)
             
-            # 如果结果是数组（未聚合），需要根据 constraint 聚合
             if isinstance(result, np.ndarray):
                 constraint = obj.get('constraint', 'max')
                 if constraint == 'max':
@@ -460,71 +460,17 @@ class ObjectiveEvaluator:
                 else:
                     actual = float(np.max(result))
             else:
-                # 结果已经是标量（聚合后的）
                 actual = float(result)
             
-            # 转换为目标函数值
             value = self._actual_to_objective(actual, obj)
-            
             return value, actual
             
-        except (FormulaEvaluationError, FormulaSyntaxError) as e:
-            print(f"[WARN] Formula evaluation failed for '{formula}': {e}")
-            return 1000.0, 1000.0
         except Exception as e:
-            print(f"[WARN] Unexpected error evaluating formula '{formula}': {e}")
+            logger.error(f"Formula evaluation failed: {e}")
             return 1000.0, 1000.0
-    
-    def _evaluate_gain(self, obj: Dict) -> Tuple[float, float]:
-        """评估增益"""
-        freq = obj.get('freq', 5.9)
-        actual = self.hfss.get_gain(freq)
-        
-        if actual is None:
-            # 增益获取失败，返回惩罚值
-            print(f"[WARN] Gain not available, using penalty value")
-            return 1000.0, 1000.0
-        
-        value = self._actual_to_objective(actual, obj)
-        return value, actual
-    
-    def _evaluate_peak_gain(self, obj: Dict) -> Tuple[float, float]:
-        """
-        评估 PeakGain - 使用 antenna_parameters 报告
-        
-        注意: 对于 Interpolating Sweep，只能在 Setup 频率点获取 PeakGain
-        如果目标频率不在 Setup 中，会自动更新 Setup 频率
-        """
-        target_freq = obj.get('freq', 4.0)  # 目标频率 (GHz)
-        
-        # 检查并确保 Setup 频率匹配
-        current_freq = self.hfss.get_setup_frequency()
-        
-        if abs(current_freq - target_freq) > 0.01:  # 10 MHz tolerance
-            print(f"[INFO] Setup frequency ({current_freq:.2f} GHz) != Target ({target_freq:.2f} GHz)")
-            print(f"[INFO] Updating Setup frequency to {target_freq:.2f} GHz...")
-            
-            # 更新 Setup 频率
-            if self.hfss.ensure_setup_frequency(target_freq):
-                # 清除缓存，需要重新仿真
-                self._s_data_cache = None
-                print(f"[OK] Setup frequency updated - re-simulation required")
-            else:
-                print(f"[WARN] Failed to update Setup frequency")
-        
-        # 获取增益
-        actual = self.hfss.get_gain(target_freq)
-        
-        if actual is None:
-            print(f"[WARN] PeakGain not available, using penalty value")
-            return 1000.0, 1000.0
-        
-        value = self._actual_to_objective(actual, obj)
-        
-        return value, actual
     
     def _evaluate_z_real(self, obj: Dict) -> Tuple[float, float]:
-        """评估阻抗实部"""
+        """评估阻抗实部（兼容旧配置）"""
         port = obj.get('port', (1, 1))
         if isinstance(port, list):
             port = tuple(port)
@@ -543,7 +489,6 @@ class ObjectiveEvaluator:
         idx = np.argmin(np.abs(freq - target_freq))
         actual = z_real[idx]
         
-        # 目标是接近某值
         target_val = obj.get('value', 50.0)
         tolerance = obj.get('tolerance', 10.0)
         
@@ -553,7 +498,7 @@ class ObjectiveEvaluator:
         return value, actual
     
     def _evaluate_z_imag(self, obj: Dict) -> Tuple[float, float]:
-        """评估阻抗虚部"""
+        """评估阻抗虚部（兼容旧配置）"""
         port = obj.get('port', (1, 1))
         if isinstance(port, list):
             port = tuple(port)
@@ -577,6 +522,54 @@ class ObjectiveEvaluator:
         
         diff = abs(actual - target_val)
         value = max(0, diff - tolerance)
+        
+        return value, actual
+    
+    def _evaluate_gain(self, obj: Dict) -> Tuple[float, float]:
+        """评估增益"""
+        freq = obj.get('freq', 5.9)
+        actual = self.hfss.get_gain(freq)
+        
+        if actual is None:
+            # 增益获取失败，返回惩罚值
+            logger.info(f"[WARN] Gain not available, using penalty value")
+            return 1000.0, 1000.0
+        
+        value = self._actual_to_objective(actual, obj)
+        return value, actual
+    
+    def _evaluate_peak_gain(self, obj: Dict) -> Tuple[float, float]:
+        """
+        评估 PeakGain - 使用 antenna_parameters 报告
+        
+        注意: 对于 Interpolating Sweep，只能在 Setup 频率点获取 PeakGain
+        如果目标频率不在 Setup 中，会自动更新 Setup 频率
+        """
+        target_freq = obj.get('freq', 4.0)  # 目标频率 (GHz)
+        
+        # 检查并确保 Setup 频率匹配
+        current_freq = self.hfss.get_setup_frequency()
+        
+        if abs(current_freq - target_freq) > 0.01:  # 10 MHz tolerance
+            logger.info(f"[INFO] Setup frequency ({current_freq:.2f} GHz) != Target ({target_freq:.2f} GHz)")
+            logger.info(f"[INFO] Updating Setup frequency to {target_freq:.2f} GHz...")
+            
+            # 更新 Setup 频率
+            if self.hfss.ensure_setup_frequency(target_freq):
+                # 清除缓存，需要重新仿真
+                self._s_data_cache = None
+                logger.info(f"[OK] Setup frequency updated - re-simulation required")
+            else:
+                logger.info(f"[WARN] Failed to update Setup frequency")
+        
+        # 获取增益
+        actual = self.hfss.get_gain(target_freq)
+        
+        if actual is None:
+            logger.info(f"[WARN] PeakGain not available, using penalty value")
+            return 1000.0, 1000.0
+        
+        value = self._actual_to_objective(actual, obj)
         
         return value, actual
     

@@ -26,6 +26,7 @@ import threading
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 import numpy as np
+from loguru import logger
 
 
 class SharedMemoryManager:
@@ -243,7 +244,7 @@ class SharedMemoryManager:
                 'timestamp': datetime.now().isoformat()
             })
             
-            print(f"[SharedMemory] Model state saved: version={new_version}, samples={n_samples}")
+            logger.info(f"[SharedMemory] Model state saved: version={new_version}, samples={n_samples}")
     
     def load_model_state(self) -> Optional[Dict]:
         """
@@ -260,7 +261,7 @@ class SharedMemoryManager:
                 with open(self.model_state_file, 'rb') as f:
                     return pickle.load(f)
             except Exception as e:
-                print(f"[WARN] Failed to load model state: {e}")
+                logger.info(f"[WARN] Failed to load model state: {e}")
                 return None
     
     def get_model_version(self) -> Dict:
@@ -439,7 +440,7 @@ class SharedMemoryManager:
             with open(filepath, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
-            print(f"[WARN] Failed to read {filepath}: {e}")
+            logger.info(f"[WARN] Failed to read {filepath}: {e}")
             return {}
     
     def _write_json(self, filepath: str, data: Dict):
@@ -448,13 +449,13 @@ class SharedMemoryManager:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"[WARN] Failed to write {filepath}: {e}")
+            logger.info(f"[WARN] Failed to write {filepath}: {e}")
     
     def cleanup(self):
         """清理资源"""
         # 清除缓存
         self._eval_cache = None
-        print("[SharedMemory] Cleanup completed")
+        logger.info("[SharedMemory] Cleanup completed")
 
 
 class HotSwapManager:
@@ -501,7 +502,7 @@ class HotSwapManager:
         model_state = self.shared_memory.load_model_state()
         
         if model_state is None:
-            print("[HotSwap] No initial model found, will use default")
+            logger.info("[HotSwap] No initial model found, will use default")
             return False
         
         try:
@@ -515,11 +516,11 @@ class HotSwapManager:
             version_info = self.shared_memory.get_model_version()
             self.current_version = version_info.get('version', 0)
             
-            print(f"[HotSwap] Initial model loaded: version={self.current_version}")
+            logger.info(f"[HotSwap] Initial model loaded: version={self.current_version}")
             return True
             
         except Exception as e:
-            print(f"[WARN] Failed to load initial model: {e}")
+            logger.info(f"[WARN] Failed to load initial model: {e}")
             return False
     
     def check_and_swap(self, model_class, model_config: Dict) -> bool:
@@ -567,7 +568,7 @@ class HotSwapManager:
                     'model_quality': version_info.get('model_quality')
                 })
                 
-                print(f"[HotSwap] Model swapped: v{self.backup_version} -> v{self.current_version}")
+                logger.info(f"[HotSwap] Model swapped: v{self.backup_version} -> v{self.current_version}")
                 
                 # 清理备份
                 self.backup_model = None
@@ -575,12 +576,12 @@ class HotSwapManager:
                 return True
                 
             except Exception as e:
-                print(f"[ERROR] Hot swap failed: {e}")
+                logger.info(f"[ERROR] Hot swap failed: {e}")
                 # 回滚
                 if self.backup_model is not None:
                     self.current_model = self.backup_model
                     self.current_version = self.backup_version
-                    print(f"[HotSwap] Rolled back to version {self.current_version}")
+                    logger.info(f"[HotSwap] Rolled back to version {self.current_version}")
                 return False
     
     def _restore_model_state(self, model_state: Dict, model=None):
@@ -654,14 +655,14 @@ class DataWatcher:
         self._running = True
         self._thread = threading.Thread(target=self._watch_loop, daemon=True)
         self._thread.start()
-        print("[DataWatcher] Started watching for new evaluations")
+        logger.info("[DataWatcher] Started watching for new evaluations")
     
     def stop(self):
         """停止监听"""
         self._running = False
         if self._thread is not None:
             self._thread.join(timeout=2.0)
-        print("[DataWatcher] Stopped")
+        logger.info("[DataWatcher] Stopped")
     
     def _watch_loop(self):
         """监听循环"""
@@ -671,7 +672,7 @@ class DataWatcher:
                 new_evals, current_count = self.shared_memory.get_new_evaluations(self._last_count)
                 
                 if new_evals:
-                    print(f"[DataWatcher] Detected {len(new_evals)} new evaluations (total: {current_count})")
+                    logger.info(f"[DataWatcher] Detected {len(new_evals)} new evaluations (total: {current_count})")
                     
                     # 触发回调
                     if self.callback is not None:
@@ -681,7 +682,7 @@ class DataWatcher:
                     self._last_count = current_count
                 
             except Exception as e:
-                print(f"[ERROR] DataWatcher error: {e}")
+                logger.info(f"[ERROR] DataWatcher error: {e}")
             
             time.sleep(self.poll_interval)
     

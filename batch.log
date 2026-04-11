@@ -5858,3 +5858,368 @@ Project directory: C:\Users\16438\Documents\Ansoft
         [info] GRPC server running on port: 64399. 
 -- Message Window --
 Stopping Batch Run: 10:25:45 上午  4月 08, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 1:31:46 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 64831. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to HFSSDesign1
+        [info] Aedt Objects correctly read
+-- Message Window --
+Stopping Batch Run: 1:32:06 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 1:35:47 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+[warning] Electronics Desktop cannot be closed right now because it is being used by another application, script or extension wizard.
+
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 1:39:20 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+[warning] Electronics Desktop cannot be closed right now because it is being used by another application, script or extension wizard.
+
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 2:22:49 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 51002. 
+        [error] **************************************************************
+        [error]   File "C:\Users\16438\Desktop\HFSS-Python-Optimizer\run.py", line 437, in <module>
+        [error]     main()
+        [error]   File "C:\Users\16438\Desktop\HFSS-Python-Optimizer\run.py", line 427, in main
+        [error]     run_optimization(config, algorithm)
+        [error]   File "C:\Users\16438\Desktop\HFSS-Python-Optimizer\run.py", line 158, in run_optimization
+        [error]     if not hfss.connect():
+        [error]   File "C:\Users\16438\Desktop\HFSS-Python-Optimizer\core\hfss_controller.py", line 93, in connect
+        [error]     self.hfss = pyaedt.Hfss(
+        [error] Project is locked. close or remove the lock before proceeding. on __init__
+        [error] Last Electronics Desktop Message - [error] project is locked. close or remove the lock before proceeding. on __init__  
+        [error] Method arguments: 
+        [error]     project = C:/Users/16438/Desktop/pyHFSSProject/n2.aedt 
+        [error]     design = HFSSDesign1 
+        [error]     new_desktop = True 
+        [error]     close_on_exit = True 
+        [error] **************************************************************
+        [info] Parsing C:/Users/16438/Desktop/pyHFSSProject/n2.aedt.
+        [info] File C:/Users/16438/Desktop/pyHFSSProject/n2.aedt correctly loaded. Elapsed time: 0m 1sec
+        [error] **************************************************************
+        [error]   File "C:\Users\16438\Desktop\HFSS-Python-Optimizer\run.py", line 437, in <module>
+        [error]     main()
+        [error]   File "C:\Users\16438\Desktop\HFSS-Python-Optimizer\run.py", line 427, in main
+        [error]     run_optimization(config, algorithm)
+        [error]   File "C:\Users\16438\Desktop\HFSS-Python-Optimizer\run.py", line 158, in run_optimization
+        [error]     if not hfss.connect():
+        [error]   File "C:\Users\16438\Desktop\HFSS-Python-Optimizer\core\hfss_controller.py", line 93, in connect
+        [error]     self.hfss = pyaedt.Hfss(
+        [error] Project is locked. close or remove the lock before proceeding. on __init__
+        [error] Last Electronics Desktop Message - [error] project is locked. close or remove the lock before proceeding. on __init__  
+        [error] Method arguments: 
+        [error]     project = C:/Users/16438/Desktop/pyHFSSProject/n2.aedt 
+        [error]     design = HFSSDesign1 
+        [error]     new_desktop = True 
+        [error]     close_on_exit = True 
+        [error] **************************************************************
+-- Message Window --
+Stopping Batch Run: 2:23:09 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 2:25:35 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 61675. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to HFSSDesign1
+        [info] Aedt Objects correctly read
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 38.0s
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 33.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 37.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 39.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 32.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 33.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 33.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 28.0s
+        [info] Solution Data Correctly Loaded.
+-- Message Window --
+Stopping Batch Run: 2:31:03 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 2:52:16 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 52258. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to HFSSDesign1
+        [info] Aedt Objects correctly read
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 22.0s
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 20.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 33.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 43.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 23.0s
+        [info] Solution Data Correctly Loaded.
+-- Message Window --
+Stopping Batch Run: 2:55:19 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 3:18:57 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 59720. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to HFSSDesign1
+        [info] AEDT objects correctly read
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 43.0s
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [info] Solution Data Correctly Loaded.
+        [info] Python version 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)].
+        [info] PyAEDT version 0.25.1.
+        [info] Returning found Desktop session with PID 9092!
+-- Message Window --
+Stopping Batch Run: 3:20:02 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 3:20:18 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 52136. 
+-- Message Window --
+Stopping Batch Run: 3:20:26 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 3:20:36 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 65304. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to HFSSDesign1
+        [info] AEDT objects correctly read
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [warning] Solution Data failed to load. Check solution, context or expression.
+        [warning] No Data Available. Check inputs
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 41.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Python version 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)].
+        [info] PyAEDT version 0.25.1.
+        [info] Returning found Desktop session with PID 24600!
+-- Message Window --
+Stopping Batch Run: 3:21:43 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 3:22:15 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 58996. 
+-- Message Window --
+Stopping Batch Run: 3:22:23 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 3:26:27 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+The project 'n2' has been edited and/or solved. Do you want to save the changes?
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 55860. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to S1
+        [info] AEDT objects correctly read
+        [info] The project 'n2' has been edited and/or solved. Do you want to save the changes?
+-- Message Window --
+Stopping Batch Run: 3:31:50 下午  4月 11, 2026
+pping Batch Run: 3:27:37 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 3:29:41 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 55429. 
+        [info] Python version 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)].
+        [info] Parsing C:/Users/16438/Desktop/pyHFSSProject/n2.aedt.
+        [info] PyAEDT version 0.25.1.
+        [info] Returning found Desktop session with PID 33752!
+        [info] File C:/Users/16438/Desktop/pyHFSSProject/n2.aedt correctly loaded. Elapsed time: 0m 0sec
+        [info] Parsing C:/Users/16438/Desktop/pyHFSSProject/n2.aedt.
+        [info] Python version 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)].
+        [info] PyAEDT version 0.25.1.
+        [info] Returning found Desktop session with PID 33752!
+        [info] File C:/Users/16438/Desktop/pyHFSSProject/n2.aedt correctly loaded. Elapsed time: 0m 0sec
+-- Message Window --
+Stopping Batch Run: 3:30:06 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 3:32:02 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 65368. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to HFSSDesign1
+        [info] AEDT objects correctly read
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 24.0s
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 36.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 43.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 29.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 37.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 33.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 43.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 41.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 32.0s
+        [info] Solution Data Correctly Loaded.
+-- Message Window --
+Stopping Batch Run: 3:38:24 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 3:41:58 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 49156. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to HFSSDesign1
+        [info] AEDT objects correctly read
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 39.0s
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 24.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 37.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 43.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 44.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 43.0s
+        [info] Solution Data Correctly Loaded.
+-- Message Window --
+Stopping Batch Run: 3:46:37 下午  4月 11, 2026

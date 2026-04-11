@@ -52,6 +52,7 @@ echo   - numpy, pandas, scipy
 echo   - pyaedt (HFSS interface)
 echo   - scikit-optimize, scikit-learn
 echo   - matplotlib, PyQt6
+echo   - loguru, pydantic
 echo.
 set /p confirm=Continue? (Y/N): 
 if /i not "%confirm%"=="Y" goto menu

@@ -675,38 +675,38 @@ if __name__ == "__main__":
         "max(dB(S(1,1))) - min(dB(S(1,1)))",
     ]
     
-    print("=" * 60)
-    print("公式解析测试")
-    print("=" * 60)
+    logger.info(f"=" * 60)
+    logger.info(f"公式解析测试")
+    logger.info(f"=" * 60)
     
     for formula in test_formulas:
-        print(f"\n公式: {formula}")
+        logger.info(f"\n公式: {formula}")
         valid, errors = FormulaValidator(formula).validate()
         if valid:
-            print("  ✓ 语法正确")
+            logger.info(f"  ✓ 语法正确")
             success, ast, err = parse_formula(formula)
             if success:
-                print(f"  AST: {ast}")
+                logger.info(f"  AST: {ast}")
         else:
-            print(f"  ✗ 语法错误: {errors}")
+            logger.info(f"  ✗ 语法错误: {errors}")
     
     # 测试修正建议
-    print("\n" + "=" * 60)
-    print("公式修正建议测试")
-    print("=" * 60)
+    logger.info(f"\n" + "=" * 60)
+    logger.info(f"公式修正建议测试")
+    logger.info(f"=" * 60)
     
     misspellings = ["s11", "s21", "db(S(1,1))", "dB(s11) + dB(s21)"]
     for wrong in misspellings:
         suggestion = FormulaValidator.suggest_correction(wrong)
         if suggestion:
-            print(f"  '{wrong}' -> '{suggestion}'")
+            logger.info(f"  '{wrong}' -> '{suggestion}'")
         else:
-            print(f"  '{wrong}' -> 无建议")
+            logger.info(f"  '{wrong}' -> 无建议")
     
     # 测试计算器（模拟数据）
-    print("\n" + "=" * 60)
-    print("公式计算测试（模拟数据）")
-    print("=" * 60)
+    logger.info(f"\n" + "=" * 60)
+    logger.info(f"公式计算测试（模拟数据）")
+    logger.info(f"=" * 60)
     
     # 创建模拟 S 参数数据
     s_data = SParameterData()
@@ -733,9 +733,9 @@ if __name__ == "__main__":
     for formula in test_eval:
         result, err = evaluate_formula(formula, s_data)
         if err:
-            print(f"  {formula}: 错误 - {err}")
+            logger.info(f"  {formula}: 错误 - {err}")
         else:
             if isinstance(result, np.ndarray):
-                print(f"  {formula}: array(shape={result.shape}, min={result.min():.2f}, max={result.max():.2f})")
+                logger.info(f"  {formula}: array(shape={result.shape}, min={result.min():.2f}, max={result.max():.2f})")
             else:
-                print(f"  {formula}: {result:.4f}")
+                logger.info(f"  {formula}: {result:.4f}")

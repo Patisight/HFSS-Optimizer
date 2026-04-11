@@ -11,6 +11,7 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple, Callable
 import warnings
 warnings.filterwarnings('ignore')
+from loguru import logger
 
 from .base import BaseOptimizer
 
@@ -53,7 +54,7 @@ class GaussianProcessSurrogate:
             return True
             
         except ImportError:
-            print("[WARN] sklearn not available")
+            logger.warning(f"[WARN] sklearn not available")
             return False
     
     def predict(self, X: np.ndarray, return_std: bool = True):
@@ -199,12 +200,12 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
         """
         self.callback = callback
         
-        print(f"\n{'='*60}")
-        print("MULTI-OBJECTIVE BAYESIAN OPTIMIZATION (MOBO)")
-        print(f"Initial samples: {self.n_initial}")
-        print(f"Max iterations: {self.n_iterations}")
-        print(f"Acquisition: {self.acquisition.upper()}")
-        print(f"{'='*60}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"MULTI-OBJECTIVE BAYESIAN OPTIMIZATION (MOBO)")
+        logger.info(f"Initial samples: {self.n_initial}")
+        logger.info(f"Max iterations: {self.n_iterations}")
+        logger.info(f"Acquisition: {self.acquisition.upper()}")
+        logger.info(f"{'='*60}")
         
         X_init = []
         y_init = []
@@ -212,13 +213,13 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
         for i in range(self.n_initial):
             while True:
                 x = self._lhs_sampling(1).flatten()
-                print(f"  [{len(X_init)+1}/{self.n_initial}] Evaluating...")
+                logger.info(f"  [{len(X_init)+1}/{self.n_initial}] Evaluating...")
                 
                 if self._has_formulas:
                     params_dict = {v['name']: x[j] for j, v in enumerate(self.variables)}
                     valid, msg = self.constraint_mgr.check_constraints(params_dict)
                     if not valid:
-                        print(f"  [CONSTRAINT VIOLATION] {msg} -> resampling")
+                        logger.info(f"  [CONSTRAINT VIOLATION] {msg} -> resampling")
                         continue
                 
                 for j, var in enumerate(self.variables):
@@ -229,10 +230,10 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
                     try:
                         if evaluator.hfss.analyze(force=True):
                             break
-                        print(f"    [WARN] Analysis returned False, retrying...")
+                        logger.info(f"    [WARN] Analysis returned False, retrying...")
                     except Exception as e:
-                        print(f"    [ERROR] Analysis failed: {e}")
-                    print(f"    [INFO] HFSS disconnected, waiting to reconnect...")
+                        logger.info(f"    [ERROR] Analysis failed: {e}")
+                    logger.info(f"    [INFO] HFSS disconnected, waiting to reconnect...")
                     import time
                     time.sleep(10)
                     continue
@@ -245,19 +246,19 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
                         result = evaluator.evaluate_all(x)
                         break
                     except RuntimeError as e:
-                        print(f"    [ERROR] Evaluation failed: {e}")
-                        print(f"    [INFO] HFSS disconnected, waiting to reconnect...")
+                        logger.info(f"    [ERROR] Evaluation failed: {e}")
+                        logger.info(f"    [INFO] HFSS disconnected, waiting to reconnect...")
                         import time
                         time.sleep(10)
                         continue
                 
                 if result is None:
-                    print(f"    [WARN] Evaluation failed -> resampling")
+                    logger.info(f"    [WARN] Evaluation failed -> resampling")
                     continue
                 
                 y = np.array(result[0]) if isinstance(result, tuple) else np.array(result)
                 if self.is_penalty_value(y):
-                    print(f"    [WARN] Abnormal objective value -> resampling")
+                    logger.info(f"    [WARN] Abnormal objective value -> resampling")
                     continue
                 
                 X_init.append(x)
@@ -275,14 +276,14 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
         # 初始化后早停检查
         if self.stop_when_goal_met:
             goals_count = self.count_objectives_meeting_goals_from_arrays([self.y_observed[i] for i in range(len(self.y_observed))])
-            print(f"[INFO] Goals check: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+            logger.info(f"[INFO] Goals check: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
             if goals_count >= self.n_solutions_to_stop:
-                print(f"\n[INFO] Early stop after initialization: {goals_count} solutions meet goals")
+                logger.info(f"\n[INFO] Early stop after initialization: {goals_count} solutions meet goals")
                 return self._get_pareto_solutions()
         
         # Step 4: 迭代优化
         for iteration in range(self.n_iterations):
-            print(f"\n[Iteration {iteration + 1}/{self.n_iterations}]")
+            logger.info(f"\n[Iteration {iteration + 1}/{self.n_iterations}]")
             
             # 选择下一个评估点
             x_next = self._select_next_point()
@@ -291,7 +292,7 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
                 params_dict = {v['name']: x_next[j] for j, v in enumerate(self.variables)}
                 valid, msg = self.constraint_mgr.check_constraints(params_dict)
                 if not valid:
-                    print(f"  [CONSTRAINT VIOLATION] {msg} -> penalty (ignored)")
+                    logger.info(f"  [CONSTRAINT VIOLATION] {msg} -> penalty (ignored)")
                     continue
             
             for j, var in enumerate(self.variables):
@@ -302,10 +303,10 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
                 try:
                     if evaluator.hfss.analyze(force=True):
                         break
-                    print(f"  [WARN] Analysis returned False, retrying...")
+                    logger.info(f"  [WARN] Analysis returned False, retrying...")
                 except Exception as e:
-                    print(f"  [ERROR] Analysis failed: {e}")
-                print(f"  [INFO] HFSS disconnected, waiting to reconnect...")
+                    logger.info(f"  [ERROR] Analysis failed: {e}")
+                logger.info(f"  [INFO] HFSS disconnected, waiting to reconnect...")
                 import time
                 time.sleep(10)
                 continue
@@ -318,20 +319,20 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
                     result = evaluator.evaluate_all(x_next)
                     break
                 except RuntimeError as e:
-                    print(f"  [ERROR] Evaluation failed: {e}")
-                    print(f"  [INFO] HFSS disconnected, waiting to reconnect...")
+                    logger.info(f"  [ERROR] Evaluation failed: {e}")
+                    logger.info(f"  [INFO] HFSS disconnected, waiting to reconnect...")
                     import time
                     time.sleep(10)
                     continue
             
             if result is None:
-                print(f"  [WARN] Evaluation failed")
+                logger.info(f"  [WARN] Evaluation failed")
                 continue
             else:
                 y_next = np.array(result[0]) if isinstance(result, tuple) else np.array(result)
             
             if self.is_penalty_value(y_next):
-                print(f"  [WARN] Abnormal objective value, skipping this point")
+                logger.info(f"  [WARN] Abnormal objective value, skipping this point")
                 continue
             
             self.X_observed = np.vstack([self.X_observed, x_next.reshape(1, -1)])
@@ -345,7 +346,7 @@ class MultiObjectiveBayesianOptimizer(BaseOptimizer):
             if self.stop_when_goal_met:
                 goals_count = self.count_objectives_meeting_goals_from_arrays([self.y_observed[i] for i in range(len(self.y_observed))])
                 if goals_count >= self.n_solutions_to_stop:
-                    print(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
+                    logger.info(f"\n[INFO] Early stop: {goals_count} solutions meet goals (threshold: {self.n_solutions_to_stop})")
                     break
             
             if self.callback:

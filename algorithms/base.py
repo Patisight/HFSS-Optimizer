@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
 import sys
 import os
+from loguru import logger
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.constraint import VariableConstraint
@@ -38,11 +39,11 @@ class BaseOptimizer(ABC):
         self._has_formulas = self.constraint_mgr.has_formulas()
         
         if self._has_formulas:
-            print(f"[CONSTRAINT] Found formula bounds in variables")
-            print(f"[CONSTRAINT] Evaluation order: {self.constraint_mgr.eval_order}")
+            logger.info(f"[CONSTRAINT] Found formula bounds in variables")
+            logger.info(f"[CONSTRAINT] Evaluation order: {self.constraint_mgr.eval_order}")
             dep_vars = self.constraint_mgr.get_dependent_vars()
             if dep_vars:
-                print(f"[CONSTRAINT] Dependent variables: {dep_vars}")
+                logger.info(f"[CONSTRAINT] Dependent variables: {dep_vars}")
     
     @abstractmethod
     def run(self, evaluator) -> List[Dict]:
@@ -358,5 +359,5 @@ class BaseOptimizer(ABC):
                 count += 1
                 # 打印达标的解
                 obj_str = ", ".join([f"{v:.4f}" for v in obj_values])
-                print(f"  [Goal met] Solution {idx+1}: [{obj_str}]")
+                logger.info(f"  [Goal met] Solution {idx+1}: [{obj_str}]")
         return count
