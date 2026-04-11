@@ -1,12 +1,15 @@
-from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Union, Dict, Any
 import json
+from typing import Any, Dict, List, Optional, Union
+
+from pydantic import BaseModel, Field, field_validator
+
 
 class VariableConfig(BaseModel):
     name: str
     bounds: List[Union[float, str]]
     unit: str = ""
-    
+
+
 class ObjectiveConfig(BaseModel):
     name: str
     type: str  # formula or direct
@@ -15,12 +18,14 @@ class ObjectiveConfig(BaseModel):
     goal: float
     target: str  # minimize or maximize
     weight: float = 1.0
-    
+
+
 class HFSSConfig(BaseModel):
     project_path: str
     design_name: str
     setup_name: str
     sweep_name: str = ""
+
 
 class AlgorithmConfig(BaseModel):
     algorithm: str = "nsga2"
@@ -33,6 +38,7 @@ class AlgorithmConfig(BaseModel):
     n_solutions_to_stop: int = 5
     load_evaluations: Optional[str] = None
 
+
 class OptimizerConfig(BaseModel):
     hfss: HFSSConfig
     variables: List[VariableConfig]
@@ -40,13 +46,13 @@ class OptimizerConfig(BaseModel):
     algorithm: Union[str, AlgorithmConfig] = "nsga2"
     run: Optional[Dict[str, Any]] = None
     visualization: Optional[Dict[str, Any]] = None
-    
+
     @classmethod
     def from_json(cls, path: str) -> "OptimizerConfig":
         with open(path) as f:
             data = json.load(f)
         return cls(**data)
-    
+
     def validate(self) -> List[str]:
         """返回警告列表，空则校验通过"""
         warnings = []

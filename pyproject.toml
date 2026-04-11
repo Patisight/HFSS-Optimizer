@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hfss-optimizer"
-version = "2026.4.8"
+version = "2026.4.11"
 description = "A powerful HFSS antenna optimization tool integrating multiple optimization algorithms and surrogate models"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -59,8 +59,7 @@ target-version = ['py38', 'py39', 'py310', 'py311']
 
 [tool.isort]
 profile = "black"
-line-length = 120
-multi-line-output = 3
+line_length = 120
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -6223,3 +6223,228 @@ Project directory: C:\Users\16438\Documents\Ansoft
         [info] Solution Data Correctly Loaded.
 -- Message Window --
 Stopping Batch Run: 3:46:37 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 3:59:42 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 50064. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to S3
+        [info] AEDT objects correctly read
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 42.0s
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [info] Solution Data Correctly Loaded.
+-- Message Window --
+Stopping Batch Run: 4:00:47 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 4:01:01 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 55432. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to S1
+        [info] AEDT objects correctly read
+        [info] Python version 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)].
+        [info] Parsing C:\Users\16438\Desktop\pyHFSSProject\n2.aedt.
+        [info] PyAEDT version 0.25.1.
+        [info] Returning found Desktop session with PID 10224!
+        [info] File C:\Users\16438\Desktop\pyHFSSProject\n2.aedt correctly loaded. Elapsed time: 0m 0sec
+        [info] Project n2 set to active.
+        [info] Active Design set to S1
+        [info] AEDT objects correctly read
+        [info] Modeler class has been initialized! Elapsed time: 0m 0sec
+        [info] Project n2 set to active.
+        [info] Active Design set to S3
+        [info] AEDT objects correctly read
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 40.0s
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [info] Solution Data Correctly Loaded.
+-- Message Window --
+Stopping Batch Run: 4:02:36 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 4:03:00 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 52410. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to S1
+        [info] AEDT objects correctly read
+        [info] Python version 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)].
+        [info] Parsing C:\Users\16438\Desktop\pyHFSSProject\n2.aedt.
+        [info] PyAEDT version 0.25.1.
+        [info] Returning found Desktop session with PID 12848!
+        [info] File C:\Users\16438\Desktop\pyHFSSProject\n2.aedt correctly loaded. Elapsed time: 0m 0sec
+        [info] Project n2 set to active.
+        [info] Active Design set to S1
+        [info] AEDT objects correctly read
+        [info] Modeler class has been initialized! Elapsed time: 0m 0sec
+        [info] Project n2 set to active.
+        [info] Active Design set to S3
+        [info] AEDT objects correctly read
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 49.0s
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [info] Solution Data Correctly Loaded.
+-- Message Window --
+Stopping Batch Run: 4:06:24 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 4:06:46 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+The project 'n2' has been edited and/or solved. Do you want to save the changes?
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 55211. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to S1
+        [info] AEDT objects correctly read
+        [info] Python version 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)].
+        [info] Parsing C:\Users\16438\Desktop\pyHFSSProject\n2.aedt.
+        [info] PyAEDT version 0.25.1.
+        [info] Returning found Desktop session with PID 29192!
+        [info] File C:\Users\16438\Desktop\pyHFSSProject\n2.aedt correctly loaded. Elapsed time: 0m 0sec
+        [info] Project n2 set to active.
+        [info] Active Design set to S1
+        [info] AEDT objects correctly read
+        [info] Modeler class has been initialized! Elapsed time: 0m 0sec
+        [info] The project 'n2' has been edited and/or solved. Do you want to save the changes?
+      n2 (C:/Users/16438/Desktop/pyHFSSProject/)
+        S1 (Terminal Network)
+          [error] Script macro error: Messages is not a design name or variable name. (4:07:01 下午  4月 11, 2026)
+          [error] Parts "Cylinder12_ObjectFromFace2" and "Cylinder3" intersect. (4:07:02 下午  4月 11, 2026)
+          [error] Parts "Cylinder12_ObjectFromFace2" and "Box9_ObjectFromFace1_2" intersect. (4:07:02 下午  4月 11, 2026)
+          [error] Parts "Cylinder12_ObjectFromFace2" and "Box9_ObjectFromFace1_1" intersect. (4:07:03 下午  4月 11, 2026)
+          [error] Parts "Cylinder12_ObjectFromFace2" and "Box9_ObjectFromFace1" intersect. (4:07:03 下午  4月 11, 2026)
+          [error] Parts "Cylinder3" and "Box1_ObjectFromFace2" intersect. (4:07:03 下午  4月 11, 2026)
+          [error] Parts "Cylinder3" and "Box1_ObjectFromFace1" intersect. (4:07:03 下午  4月 11, 2026)
+          [error] Parts "Cylinder3" and "Box9_ObjectFromFace1" intersect. (4:07:03 下午  4月 11, 2026)
+          [warning] Solution Setup 'Setup1':  The infinite sphere setup for the far field observation domain has been changed. (4:07:03 下午  4月 11, 2026)
+-- Message Window --
+Stopping Batch Run: 4:08:03 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 4:08:05 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 55211. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to S3
+        [info] AEDT objects correctly read
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 45.0s
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [info] Solution Data Correctly Loaded.
+-- Message Window --
+Stopping Batch Run: 4:09:14 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 4:09:39 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+The project 'n2' has been edited and/or solved. Do you want to save the changes?
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 50235. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to S1
+        [info] AEDT objects correctly read
+        [info] Python version 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)].
+        [info] Parsing C:\Users\16438\Desktop\pyHFSSProject\n2.aedt.
+        [info] PyAEDT version 0.25.1.
+        [info] Returning found Desktop session with PID 13604!
+        [info] File C:\Users\16438\Desktop\pyHFSSProject\n2.aedt correctly loaded. Elapsed time: 0m 1sec
+        [info] Project n2 set to active.
+        [info] Active Design set to S1
+        [info] AEDT objects correctly read
+        [info] Modeler class has been initialized! Elapsed time: 0m 0sec
+        [info] The project 'n2' has been edited and/or solved. Do you want to save the changes?
+      n2 (C:/Users/16438/Desktop/pyHFSSProject/)
+        S1 (Terminal Network)
+          [error] Script macro error: Messages is not a design name or variable name. (4:09:55 下午  4月 11, 2026)
+          [error] Parts "Cylinder12_ObjectFromFace2" and "Cylinder3" intersect. (4:09:56 下午  4月 11, 2026)
+          [error] Parts "Cylinder12_ObjectFromFace2" and "Box9_ObjectFromFace1_2" intersect. (4:09:56 下午  4月 11, 2026)
+          [error] Parts "Cylinder12_ObjectFromFace2" and "Box9_ObjectFromFace1_1" intersect. (4:09:56 下午  4月 11, 2026)
+          [error] Parts "Cylinder12_ObjectFromFace2" and "Box9_ObjectFromFace1" intersect. (4:09:56 下午  4月 11, 2026)
+          [error] Parts "Cylinder3" and "Box1_ObjectFromFace2" intersect. (4:09:56 下午  4月 11, 2026)
+          [error] Parts "Cylinder3" and "Box1_ObjectFromFace1" intersect. (4:09:56 下午  4月 11, 2026)
+          [error] Parts "Cylinder3" and "Box9_ObjectFromFace1" intersect. (4:09:56 下午  4月 11, 2026)
+          [warning] Solution Setup 'Setup1':  The infinite sphere setup for the far field observation domain has been changed. (4:09:57 下午  4月 11, 2026)
+-- Message Window --
+Stopping Batch Run: 4:10:31 下午  4月 11, 2026
+ 
+Ansys Electronics Desktop Version 2023.1.0, Build: 2022-11-20 22:10:41
+Location: D:\Program Files\AnsysEM\v231\Win64\ansysedt.exe
+Non Graphical Mode: No Project??
+Starting Batch Run: 4:14:18 下午  4月 11, 2026
+Running as user: AEAYANG\16438
+Temp directory: D:\Users\16438\AppData\Local\Temp
+Project directory: C:\Users\16438\Documents\Ansoft
+-- Message Window --
+      *Global - Messages
+        [info] GRPC server running on port: 64684. 
+        [info] Project n2 has been opened.
+        [info] Active Design set to HFSSDesign1
+        [info] AEDT objects correctly read
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 29.0s
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] PostProcessor class has been initialized! Elapsed time: 0m 0sec
+        [info] Post class has been initialized! Elapsed time: 0m 0sec
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 33.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 24.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 43.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 43.0s
+        [info] Solution Data Correctly Loaded.
+        [info] Solving design setup Setup1
+        [info] Design setup Setup1 solved correctly in 0.0h 0.0m 43.0s
+        [info] Solution Data Correctly Loaded.
+-- Message Window --
+Stopping Batch Run: 4:18:42 下午  4月 11, 2026

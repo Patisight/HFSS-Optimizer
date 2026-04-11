@@ -1,33 +1,36 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """测试导入"""
+
 import sys
-sys.path.insert(0, '.')
 
-print("Testing imports...")
+sys.path.insert(0, ".")
 
-try:
+
+def test_import_mopso():
+    """测试 MOPSO 导入"""
     from algorithms.mopso import MOPSO
-    print("[OK] MOPSO")
-except Exception as e:
-    print(f"[ERROR] MOPSO: {e}")
 
-try:
+    assert MOPSO is not None
+
+
+def test_import_mobo():
+    """测试 MOBO 导入"""
     from algorithms.mobo import MultiObjectiveBayesianOptimizer
-    print("[OK] MOBO (MultiObjectiveBayesianOptimizer)")
-except Exception as e:
-    print(f"[ERROR] MOBO: {e}")
 
-try:
+    assert MultiObjectiveBayesianOptimizer is not None
+
+
+def test_import_nsga2():
+    """测试 NSGA2 导入"""
     from algorithms.nsga2 import NSGA2
-    print("[OK] NSGA2")
-except Exception as e:
-    print(f"[ERROR] NSGA2: {e}")
 
-try:
-    from core.surrogate import SurrogateModel, SurrogateManager
-    print("[OK] Surrogate")
-except Exception as e:
-    print(f"[ERROR] Surrogate: {e}")
+    assert NSGA2 is not None
 
-print("\nAll imports tested!")
+
+def test_import_surrogate():
+    """测试 Surrogate 导入"""
+    from core.surrogate import SurrogateManager, SurrogateModel
+
+    assert SurrogateManager is not None
+    assert SurrogateModel is not None

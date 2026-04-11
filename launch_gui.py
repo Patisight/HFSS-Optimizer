@@ -15,22 +15,22 @@ sys.path.insert(0, PROJECT_ROOT)
 def check_dependencies():
     """检查依赖"""
     missing = []
-    
+
     try:
         import PyQt6
     except ImportError:
         missing.append("PyQt6")
-    
+
     try:
         import numpy
     except ImportError:
         missing.append("numpy")
-    
+
     try:
         import pandas
     except ImportError:
         missing.append("pandas")
-    
+
     return missing
 
 
@@ -39,14 +39,17 @@ def main():
         missing = check_dependencies()
         if missing:
             from loguru import logger
+
             logger.error(f"Missing dependencies: {', '.join(missing)}")
             logger.info(f"Run: pip install {' '.join(missing)}")
             sys.exit(1)
-        
+
         from gui_pyqt6 import main
+
         main()
     except Exception as e:
         from loguru import logger
+
         logger.error(f"{e}")
         traceback.print_exc()
         input("\nPress Enter to exit...")
